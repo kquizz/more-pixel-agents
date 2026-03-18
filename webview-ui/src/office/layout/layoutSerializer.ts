@@ -200,21 +200,22 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
         // 3) Default forward (DOWN)
         let facingDir: Direction = Direction.DOWN;
         let facesDesk = false;
+
+        // Check all 4 adjacent tiles for desks
+        for (const d of dirs) {
+          if (deskTiles.has(`${tileCol + d.dc},${tileRow + d.dr}`)) {
+            facesDesk = true;
+            // If no explicit orientation, face toward the desk
+            if (!entry.orientation) {
+              facingDir = d.facing;
+            }
+            break;
+          }
+        }
+
+        // Apply chair orientation if specified
         if (entry.orientation) {
           facingDir = orientationToFacing(entry.orientation);
-          // Check if there's a desk in the orientation direction
-          const orientDir = dirs.find((d) => d.facing === facingDir);
-          if (orientDir && deskTiles.has(`${tileCol + orientDir.dc},${tileRow + orientDir.dr}`)) {
-            facesDesk = true;
-          }
-        } else {
-          for (const d of dirs) {
-            if (deskTiles.has(`${tileCol + d.dc},${tileRow + d.dr}`)) {
-              facingDir = d.facing;
-              facesDesk = true;
-              break;
-            }
-          }
         }
 
         // First seat uses chair uid (backward compat), subsequent use uid:N
