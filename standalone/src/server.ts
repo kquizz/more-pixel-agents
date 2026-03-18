@@ -104,18 +104,32 @@ function decodeDirName(dirName: string): string {
   return current || bestPath;
 }
 
+/**
+ * Encode a filesystem path the same way Claude Code does for ~/.claude/projects/ dir names.
+ * Replaces non-alphanumeric chars (except -) with '-'.
+ */
+function encodePath(fsPath: string): string {
+  return fsPath.replace(/[^a-zA-Z0-9-]/g, '-');
+}
+
 function updateTerminalInfo(): void {
   try {
     terminalCache = detectTerminals();
 
-    // Match cached terminal info to existing agents
+    // Match terminal info to agents by encoding the CWD and comparing to the agent's project dir name.
+    // This is more reliable than decoding dir names, which is lossy for paths with hyphens.
     for (const [, agent] of agents) {
-      if (!agent.projectPath) continue;
-      const info = terminalCache.get(agent.projectPath);
-      if (info) {
-        agent.terminalApp = info.terminalApp;
-        agent.claudePid = info.claudePid;
-        agent.shellPid = info.shellPid;
+      const agentDirName = path.basename(agent.projectDir);
+
+      for (const [cwd, info] of terminalCache) {
+        if (encodePath(cwd) === agentDirName) {
+          agent.terminalApp = info.terminalApp;
+          agent.claudePid = info.claudePid;
+          agent.shellPid = info.shellPid;
+          // Also fix projectPath if decodeDirName got it wrong
+          agent.projectPath = cwd;
+          break;
+        }
       }
     }
   } catch {
