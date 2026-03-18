@@ -41,7 +41,7 @@ const clients = new Set<WebSocket>();
 
 // -- Terminal detection cache --
 
-let terminalCache = new Map<string, TerminalInfo>();
+let terminalCache = new Map<number, TerminalInfo>();
 const TERMINAL_DETECT_INTERVAL_MS = 10_000;
 
 /**
@@ -116,18 +116,43 @@ function updateTerminalInfo(): void {
   try {
     terminalCache = detectTerminals();
 
-    // Match terminal info to agents by encoding the CWD and comparing to the agent's project dir name.
-    // This is more reliable than decoding dir names, which is lossy for paths with hyphens.
+    // Match terminal info to agents.
+    // The cache is keyed by Claude PID, so multiple agents in the same folder work.
+    // We match by encoding the terminal's CWD and comparing to the agent's project dir name.
+    const agentDirName = new Map<number, string>();
     for (const [, agent] of agents) {
-      const agentDirName = path.basename(agent.projectDir);
+      agentDirName.set(agent.id, path.basename(agent.projectDir));
+    }
 
-      for (const [cwd, info] of terminalCache) {
-        if (encodePath(cwd) === agentDirName) {
+    for (const [, agent] of agents) {
+      const dirName = agentDirName.get(agent.id);
+      if (!dirName) continue;
+
+      // If agent already has a claudePid and it's still in the cache, use it directly
+      if (agent.claudePid && terminalCache.has(agent.claudePid)) {
+        const info = terminalCache.get(agent.claudePid)!;
+        agent.terminalApp = info.terminalApp;
+        agent.shellPid = info.shellPid;
+        agent.tty = info.tty;
+        agent.projectPath = info.cwd;
+        continue;
+      }
+
+      // Otherwise, find a matching terminal by encoded CWD
+      // Use a Set to track which PIDs are already claimed by other agents
+      const claimedPids = new Set<number>();
+      for (const [, a] of agents) {
+        if (a.claudePid) claimedPids.add(a.claudePid);
+      }
+
+      for (const [pid, info] of terminalCache) {
+        if (claimedPids.has(pid)) continue;
+        if (encodePath(info.cwd) === dirName) {
           agent.terminalApp = info.terminalApp;
-          agent.claudePid = info.claudePid;
+          agent.claudePid = pid;
           agent.shellPid = info.shellPid;
-          // Also fix projectPath if decodeDirName got it wrong
-          agent.projectPath = cwd;
+          agent.tty = info.tty;
+          agent.projectPath = info.cwd;
           break;
         }
       }
@@ -312,8 +337,19 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
   const dirBaseName = path.basename(projectDir);
   const projectPath = decodeDirName(dirBaseName);
 
-  // Look up terminal info from cache
-  const termInfo = terminalCache.get(projectPath);
+  // Look up terminal info from cache by matching encoded CWD to dir name
+  let termInfo: TerminalInfo | undefined;
+  const claimedPids = new Set<number>();
+  for (const [, a] of agents) {
+    if (a.claudePid) claimedPids.add(a.claudePid);
+  }
+  for (const [, info] of terminalCache) {
+    if (claimedPids.has(info.claudePid)) continue;
+    if (encodePath(info.cwd) === dirBaseName) {
+      termInfo = info;
+      break;
+    }
+  }
 
   // Resolve character ID from config
   const configCharId = projectPath ? resolveCharacterId(projectPath) : -1;
@@ -351,10 +387,11 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     permissionSent: false,
     hadToolsInTurn: false,
     folderName: projectName,
-    projectPath,
+    projectPath: termInfo?.cwd ?? projectPath,
     terminalApp: termInfo?.terminalApp,
     claudePid: termInfo?.claudePid,
     shellPid: termInfo?.shellPid ?? null,
+    tty: termInfo?.tty ?? null,
     characterId,
   };
 
@@ -676,7 +713,12 @@ function handleClientMessage(
     const agent = agents.get(agentId);
     let success = false;
     if (agent?.terminalApp && agent.claudePid && agent.projectPath) {
-      success = focusTerminal(agent.terminalApp, agent.claudePid, agent.projectPath);
+      success = focusTerminal(
+        agent.terminalApp,
+        agent.claudePid,
+        agent.projectPath,
+        agent.tty ?? null,
+      );
     }
     broadcast({ type: 'focusResult', id: agentId, success });
   } else if (msg.type === 'closeAgent') {

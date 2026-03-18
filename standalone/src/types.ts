@@ -18,6 +18,7 @@ export interface AgentState {
   claudePid?: number;
   shellPid?: number | null;
   projectPath?: string;
+  tty?: string | null;
   characterId?: number; // 0-5 from config, or undefined for auto-assigned
 }
 

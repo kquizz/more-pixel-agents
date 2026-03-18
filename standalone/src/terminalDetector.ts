@@ -4,6 +4,8 @@ export interface TerminalInfo {
   terminalApp: string;
   claudePid: number;
   shellPid: number | null;
+  cwd: string;
+  tty: string | null;
 }
 
 const KNOWN_TERMINALS: Array<{ pattern: string; name: string }> = [
@@ -51,7 +53,6 @@ function getCwd(pid: number): string | null {
       encoding: 'utf-8',
       timeout: 3000,
     });
-    // lsof output has lines like "p<pid>" and "n<path>"
     for (const line of output.split('\n')) {
       if (line.startsWith('n') && line.length > 1) {
         return line.slice(1);
@@ -63,17 +64,27 @@ function getCwd(pid: number): string | null {
   }
 }
 
+function getTty(pid: number): string | null {
+  try {
+    const tty = execSync(`ps -p ${pid} -o tty=`, {
+      encoding: 'utf-8',
+      timeout: 3000,
+    }).trim();
+    return tty && tty !== '??' ? tty : null;
+  } catch {
+    return null;
+  }
+}
+
 function identifyTerminal(args: string): string | null {
   const lower = args.toLowerCase();
 
-  // Check VS Code patterns first
   for (const pattern of VSCODE_PATTERNS) {
     if (lower.includes(pattern)) {
       return 'VS Code';
     }
   }
 
-  // Check known terminals
   for (const { pattern, name } of KNOWN_TERMINALS) {
     if (lower.includes(pattern)) {
       return name;
@@ -98,7 +109,6 @@ function walkProcessTree(pid: number): { terminalApp: string; shellPid: number |
       continue;
     }
 
-    // Check if this is a shell (track the first shell we find)
     const lowerArgs = args.toLowerCase();
     if (
       shellPid === null &&
@@ -123,10 +133,11 @@ function walkProcessTree(pid: number): { terminalApp: string; shellPid: number |
 
 /**
  * Detect which terminal app hosts each active Claude Code session.
- * Returns a Map of project path -> TerminalInfo.
+ * Returns a Map keyed by Claude PID (not CWD) to support multiple
+ * sessions in the same folder.
  */
-export function detectTerminals(): Map<string, TerminalInfo> {
-  const result = new Map<string, TerminalInfo>();
+export function detectTerminals(): Map<number, TerminalInfo> {
+  const result = new Map<number, TerminalInfo>();
 
   try {
     const psOutput = execSync('ps auxww', {
@@ -137,10 +148,8 @@ export function detectTerminals(): Map<string, TerminalInfo> {
 
     const lines = psOutput.split('\n');
     for (const line of lines) {
-      // Look for claude processes (the actual CLI, not grep itself)
       if (!line.includes('claude') || line.includes('grep')) continue;
 
-      // Match lines that look like a Claude Code CLI process
       const lowerLine = line.toLowerCase();
       if (
         !lowerLine.includes('/claude') &&
@@ -150,24 +159,26 @@ export function detectTerminals(): Map<string, TerminalInfo> {
         continue;
       }
 
-      // Extract PID (second field in ps aux output)
       const fields = line.trim().split(/\s+/);
       if (fields.length < 2) continue;
       const pid = parseInt(fields[1], 10);
       if (isNaN(pid)) continue;
 
       try {
-        // Get the working directory of this Claude process
         const cwd = getCwd(pid);
         if (!cwd) continue;
 
         const treeResult = walkProcessTree(pid);
         if (!treeResult) continue;
 
-        result.set(cwd, {
+        const tty = getTty(pid);
+
+        result.set(pid, {
           terminalApp: treeResult.terminalApp,
           claudePid: pid,
           shellPid: treeResult.shellPid,
+          cwd,
+          tty,
         });
       } catch {
         // Skip this process on any error
