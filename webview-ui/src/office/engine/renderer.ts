@@ -515,6 +515,63 @@ export function renderBubbles(
   }
 }
 
+// ── Character labels ─────────────────────────────────────────────
+
+/** Extract the last segment of a path (e.g., "/Users/foo/tesla" → "tesla") */
+function lastPathSegment(p: string): string {
+  const segments = p.split('/').filter(Boolean);
+  return segments[segments.length - 1] || p;
+}
+
+export function renderCharacterLabels(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const ch of characters) {
+    // Only show label if character has a folderName or projectPath
+    const label = ch.projectPath ? lastPathSegment(ch.projectPath) : ch.folderName;
+    if (!label) continue;
+
+    // Skip characters in matrix effect (spawning/despawning)
+    if (ch.matrixEffect) continue;
+
+    // Font size scales with zoom but has a minimum for readability
+    const fontSize = Math.max(7, Math.round(8 * zoom));
+
+    // Position: centered below the character sprite
+    // Character is anchored bottom-center at (ch.x, ch.y)
+    // Add a small gap below the character feet
+    const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const labelX = Math.round(offsetX + ch.x * zoom);
+    const labelY = Math.round(offsetY + (ch.y + sittingOffset) * zoom + 2 * zoom);
+
+    ctx.save();
+    ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    // Dark outline/shadow for readability (draw text 4x offset in dark color)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    for (const [dx, dy] of [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ]) {
+      ctx.fillText(label, labelX + dx, labelY + dy);
+    }
+
+    // White text on top
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, labelX, labelY);
+
+    ctx.restore();
+  }
+}
+
 export interface ButtonBounds {
   /** Center X in device pixels */
   cx: number;
@@ -617,6 +674,9 @@ export function renderFrame(
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
+
+  // Project path labels below characters
+  renderCharacterLabels(ctx, characters, offsetX, offsetY, zoom);
 
   // Editor overlays
   if (editor) {
