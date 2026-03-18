@@ -115,6 +115,12 @@ function encodePath(fsPath: string): string {
 function updateTerminalInfo(): void {
   try {
     terminalCache = detectTerminals();
+    if (terminalCache.size > 0) {
+      console.log(`[Terminal] Found ${terminalCache.size} Claude process(es)`);
+      for (const [pid, info] of terminalCache) {
+        console.log(`  PID=${pid} app=${info.terminalApp} tty=${info.tty} cwd=${info.cwd}`);
+      }
+    }
 
     // Match terminal info to agents.
     // The cache is keyed by Claude PID, so multiple agents in the same folder work.
