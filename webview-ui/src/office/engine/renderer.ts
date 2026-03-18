@@ -528,6 +528,17 @@ function lastPathSegment(p: string): string {
   return segments[segments.length - 1] || p;
 }
 
+/** Status dot color based on character activity */
+function getStatusDot(ch: Character): { dot: string; color: string } {
+  if (ch.isActive && (ch.state === CharacterState.TYPE || ch.currentTool)) {
+    return { dot: '\u25CF ', color: '#4ade80' }; // green — actively working
+  }
+  if (ch.isActive) {
+    return { dot: '\u25CF ', color: '#facc15' }; // yellow — active but waiting
+  }
+  return { dot: '\u25CF ', color: '#9ca3af' }; // grey — idle
+}
+
 export function renderCharacterLabels(
   ctx: CanvasRenderingContext2D,
   characters: Character[],
@@ -536,7 +547,14 @@ export function renderCharacterLabels(
   zoom: number,
 ): void {
   // First pass: compute label positions
-  const labels: Array<{ label: string; x: number; y: number; width: number; height: number }> = [];
+  const labels: Array<{
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    dotColor: string;
+  }> = [];
   const fontSize = Math.max(7, Math.round(8 * zoom));
   ctx.save();
   ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
@@ -544,12 +562,26 @@ export function renderCharacterLabels(
   for (const ch of characters) {
     // Sub-agents don't get their own label (parent's label is sufficient)
     if (ch.isSubagent) continue;
-    const label = ch.projectPath ? lastPathSegment(ch.projectPath) : ch.folderName;
-    if (!label || ch.matrixEffect) continue;
+    const rawLabel = ch.projectPath ? lastPathSegment(ch.projectPath) : ch.folderName;
+    if (!rawLabel || ch.matrixEffect) continue;
+
+    const { dot, color: dotColor } = getStatusDot(ch);
+    const label = dot + rawLabel;
 
     const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const isActiveAgent = ch.isActive || ch.state === CharacterState.TYPE;
     const labelX = Math.round(offsetX + ch.x * zoom);
-    let labelY = Math.round(offsetY + (ch.y + sittingOffset) * zoom + 2 * zoom);
+    // Active agents: position label ABOVE the character's head
+    // Idle agents: position label below the character
+    const charSpriteHeight = 24 * zoom;
+    let labelY: number;
+    if (isActiveAgent) {
+      // Above: character anchored bottom-center, sprite is 24px tall
+      const headY = offsetY + (ch.y + sittingOffset) * zoom - charSpriteHeight;
+      labelY = Math.round(headY - fontSize - 4 * zoom);
+    } else {
+      labelY = Math.round(offsetY + (ch.y + sittingOffset) * zoom + 2 * zoom);
+    }
     const metrics = ctx.measureText(label);
     const labelW = metrics.width;
     const labelH = fontSize + 2;
@@ -563,17 +595,18 @@ export function renderCharacterLabels(
       }
     }
 
-    labels.push({ label, x: labelX, y: labelY, width: labelW, height: labelH });
+    labels.push({ label, x: labelX, y: labelY, width: labelW, height: labelH, dotColor });
   }
   ctx.restore();
 
   // Second pass: render
-  for (const { label, x, y } of labels) {
+  for (const { label, x, y, dotColor } of labels) {
     ctx.save();
     ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
+    // Draw text outline (dark background)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     for (const [dx, dy] of [
       [-1, 0],
@@ -584,8 +617,24 @@ export function renderCharacterLabels(
       ctx.fillText(label, x + dx, y + dy);
     }
 
+    // Draw the dot in color, then the rest in white
+    // Since we prepended the dot, measure it to split rendering
+    const dotStr = label.substring(0, 2); // "● "
+    const textStr = label.substring(2);
+    const dotWidth = ctx.measureText(dotStr).width;
+    const fullWidth = ctx.measureText(label).width;
+    // textAlign is center, so the label starts at x - fullWidth/2
+    const startX = x - fullWidth / 2;
+
+    // Draw dot in its status color
+    ctx.textAlign = 'left';
+    ctx.fillStyle = dotColor;
+    ctx.fillText(dotStr, startX, y);
+
+    // Draw remaining text in white
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, x, y);
+    ctx.fillText(textStr, startX + dotWidth, y);
+
     ctx.restore();
   }
 }
