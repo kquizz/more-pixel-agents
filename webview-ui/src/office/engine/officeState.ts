@@ -726,6 +726,37 @@ export class OfficeState {
     }
   }
 
+  getDeskLabels(): Array<{ col: number; row: number; label: string }> {
+    const labels: Array<{ col: number; row: number; label: string }> = [];
+    for (const [, ch] of this.characters) {
+      if (ch.isSubagent || !ch.seatId) continue;
+      const seat = this.seats.get(ch.seatId);
+      if (!seat) continue;
+      const label = ch.projectPath ? ch.projectPath.split('/').pop() || '' : ch.folderName || '';
+      if (!label) continue;
+      // Place label on the desk tile (one tile in the facing direction from the seat)
+      const dirOffsets: Record<number, { dc: number; dr: number }> = {
+        [Direction.UP]: { dc: 0, dr: -1 },
+        [Direction.DOWN]: { dc: 0, dr: 1 },
+        [Direction.LEFT]: { dc: -1, dr: 0 },
+        [Direction.RIGHT]: { dc: 1, dr: 0 },
+      };
+      const d = dirOffsets[seat.facingDir] || { dc: 0, dr: -1 };
+      labels.push({ col: seat.seatCol + d.dc, row: seat.seatRow + d.dr, label });
+    }
+    return labels;
+  }
+
+  getWhiteboardPositions(): Array<{ col: number; row: number; width: number; height: number }> {
+    const results: Array<{ col: number; row: number; width: number; height: number }> = [];
+    for (const item of this.layout.furniture) {
+      if (item.type.toUpperCase().includes('WHITEBOARD')) {
+        results.push({ col: item.col, row: item.row, width: 2, height: 2 });
+      }
+    }
+    return results;
+  }
+
   getCharacters(): Character[] {
     return Array.from(this.characters.values());
   }

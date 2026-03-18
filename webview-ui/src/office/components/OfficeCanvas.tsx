@@ -49,6 +49,7 @@ interface OfficeCanvasProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
+  todos?: Array<{ status: string }>;
 }
 
 export function OfficeCanvas({
@@ -67,6 +68,7 @@ export function OfficeCanvas({
   zoom,
   onZoomChange,
   panRef,
+  todos,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -280,6 +282,9 @@ export function OfficeCanvas({
           officeState.getLayout().tileColors,
           officeState.getLayout().cols,
           officeState.getLayout().rows,
+          officeState.getDeskLabels(),
+          officeState.getWhiteboardPositions(),
+          todos,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 
@@ -293,7 +298,7 @@ export function OfficeCanvas({
       stop();
       observer.disconnect();
     };
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef]);
+  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, todos]);
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(

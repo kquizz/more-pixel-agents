@@ -643,6 +643,74 @@ export interface ButtonBounds {
 export type DeleteButtonBounds = ButtonBounds;
 export type RotateButtonBounds = ButtonBounds;
 
+// ── Desk labels ──────────────────────────────────────────────────
+
+function renderDeskLabels(
+  ctx: CanvasRenderingContext2D,
+  deskLabels: Array<{ col: number; row: number; label: string }>,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  if (deskLabels.length === 0) return;
+  const fontSize = Math.max(4, Math.round(5 * zoom));
+  ctx.save();
+  ctx.font = `${fontSize}px "Courier New", Courier, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = 0.6;
+
+  for (const { col, row, label } of deskLabels) {
+    const x = Math.round(offsetX + (col * TILE_SIZE + TILE_SIZE / 2) * zoom);
+    const y = Math.round(offsetY + (row * TILE_SIZE + TILE_SIZE / 2) * zoom);
+    const textWidth = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(x - textWidth / 2 - 2, y - fontSize / 2 - 1, textWidth + 4, fontSize + 2);
+    ctx.fillStyle = '#cdd6f4';
+    ctx.fillText(label, x, y);
+  }
+  ctx.restore();
+}
+
+// ── Whiteboard todos ─────────────────────────────────────────────
+
+function renderWhiteboardTodos(
+  ctx: CanvasRenderingContext2D,
+  whiteboards: Array<{ col: number; row: number; width: number; height: number }>,
+  todos: Array<{ status: string }>,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  if (todos.length === 0 || whiteboards.length === 0) return;
+  const wb = whiteboards[0];
+  const blockSize = Math.max(2, Math.round(3 * zoom));
+  const padding = Math.round(3 * zoom);
+  const startX = Math.round(offsetX + wb.col * TILE_SIZE * zoom) + padding;
+  const startY = Math.round(offsetY + wb.row * TILE_SIZE * zoom) + padding;
+  const maxCols = Math.floor((wb.width * TILE_SIZE * zoom - padding * 2) / (blockSize + 1));
+  if (maxCols <= 0) return;
+
+  ctx.save();
+  let c = 0,
+    r = 0;
+  for (const todo of todos) {
+    ctx.fillStyle =
+      todo.status === 'completed'
+        ? '#a6e3a1'
+        : todo.status === 'in_progress'
+          ? '#f9e2af'
+          : '#585b70';
+    ctx.fillRect(startX + c * (blockSize + 1), startY + r * (blockSize + 1), blockSize, blockSize);
+    c++;
+    if (c >= maxCols) {
+      c = 0;
+      r++;
+    }
+  }
+  ctx.restore();
+}
+
 export interface EditorRenderState {
   showGrid: boolean;
   ghostSprite: SpriteData | null;
@@ -691,6 +759,9 @@ export function renderFrame(
   tileColors?: Array<FloorColor | null>,
   layoutCols?: number,
   layoutRows?: number,
+  deskLabels?: Array<{ col: number; row: number; label: string }>,
+  whiteboards?: Array<{ col: number; row: number; width: number; height: number }>,
+  todos?: Array<{ status: string }>,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -730,6 +801,16 @@ export function renderFrame(
   const selectedId = selection?.selectedAgentId ?? null;
   const hoveredId = selection?.hoveredAgentId ?? null;
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId);
+
+  // Desk labels (on desk surfaces, after furniture but visually part of the scene)
+  if (deskLabels && deskLabels.length > 0) {
+    renderDeskLabels(ctx, deskLabels, offsetX, offsetY, zoom);
+  }
+
+  // Whiteboard todo blocks
+  if (whiteboards && todos) {
+    renderWhiteboardTodos(ctx, whiteboards, todos, offsetX, offsetY, zoom);
+  }
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
