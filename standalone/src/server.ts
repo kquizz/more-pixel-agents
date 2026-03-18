@@ -15,6 +15,9 @@ import {
   LAYOUT_REVISION_KEY,
   PROJECT_SCAN_INTERVAL_MS,
 } from './constants.js';
+import { detectTerminals } from './terminalDetector.js';
+import type { TerminalInfo } from './terminalDetector.js';
+import { focusTerminal } from './terminalFocus.js';
 import {
   cancelPermissionTimer,
   cancelWaitingTimer,
@@ -34,6 +37,90 @@ const knownJsonlFiles = new Set<string>();
 const knownProjectDirs = new Set<string>();
 let nextAgentId = 1;
 const clients = new Set<WebSocket>();
+
+// -- Terminal detection cache --
+
+let terminalCache = new Map<string, TerminalInfo>();
+const TERMINAL_DETECT_INTERVAL_MS = 10_000;
+
+/**
+ * Decode a Claude projects directory name back to a filesystem path.
+ * Claude encodes paths by replacing non-alphanumeric chars (except -) with '-'.
+ * e.g. "-Users-kquillen-Code-tesla" -> "/Users/kquillen/Code/tesla"
+ *
+ * We try to reconstruct by checking if replacing '-' with '/' yields an existing directory.
+ */
+function decodeDirName(dirName: string): string {
+  // The encoding replaces '/' with '-', so "-Users-foo-bar" came from "/Users/foo/bar"
+  // Strategy: replace leading '-' with '/', then try each '-' as '/' or '-'
+  // Simple greedy approach: split on '-', try to build the longest valid path
+  const parts = dirName.split('-').filter(Boolean);
+  if (parts.length === 0) return dirName;
+
+  let bestPath = '/' + parts.join('/');
+
+  // Check if the simple full-slash replacement exists
+  try {
+    if (fs.existsSync(bestPath)) return bestPath;
+  } catch {
+    // continue
+  }
+
+  // Greedy approach: build path segment by segment, preferring '/' when the path exists
+  let current = '';
+  for (let i = 0; i < parts.length; i++) {
+    const withSlash = current + '/' + parts[i];
+    const withDash = i === 0 ? current + '/' + parts[i] : current + '-' + parts[i];
+
+    if (i === 0) {
+      // First part always starts with /
+      current = '/' + parts[i];
+      continue;
+    }
+
+    try {
+      if (fs.existsSync(withSlash) || fs.statSync(withSlash + '/').isDirectory()) {
+        current = withSlash;
+        continue;
+      }
+    } catch {
+      // path doesn't exist with slash
+    }
+
+    try {
+      if (fs.existsSync(withDash)) {
+        current = withDash;
+        continue;
+      }
+    } catch {
+      // neither exists
+    }
+
+    // Default to slash
+    current = withSlash;
+  }
+
+  return current || bestPath;
+}
+
+function updateTerminalInfo(): void {
+  try {
+    terminalCache = detectTerminals();
+
+    // Match cached terminal info to existing agents
+    for (const [, agent] of agents) {
+      if (!agent.projectPath) continue;
+      const info = terminalCache.get(agent.projectPath);
+      if (info) {
+        agent.terminalApp = info.terminalApp;
+        agent.claudePid = info.claudePid;
+        agent.shellPid = info.shellPid;
+      }
+    }
+  } catch {
+    // Don't crash on detection errors
+  }
+}
 
 // -- Helpers --
 
@@ -207,6 +294,12 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
 
   const id = nextAgentId++;
   const projectName = getProjectName(projectDir);
+  const dirBaseName = path.basename(projectDir);
+  const projectPath = decodeDirName(dirBaseName);
+
+  // Look up terminal info from cache
+  const termInfo = terminalCache.get(projectPath);
+
   const agent: AgentState = {
     id,
     projectDir,
@@ -223,6 +316,10 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     permissionSent: false,
     hadToolsInTurn: false,
     folderName: projectName,
+    projectPath,
+    terminalApp: termInfo?.terminalApp,
+    claudePid: termInfo?.claudePid,
+    shellPid: termInfo?.shellPid ?? null,
   };
 
   // Skip to near end of file - only read recent activity
@@ -236,7 +333,13 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
 
   agents.set(id, agent);
   console.log(`[Agent ${id}] Adopted session in ${projectName}: ${path.basename(filePath)}`);
-  broadcast({ type: 'agentCreated', id, folderName: projectName });
+  broadcast({
+    type: 'agentCreated',
+    id,
+    folderName: projectName,
+    terminalApp: agent.terminalApp,
+    projectPath: agent.projectPath,
+  });
 
   startFileWatching(id, filePath);
   readNewLines(id);
@@ -312,10 +415,21 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
   // Send existing agents - these get buffered in pendingAgents by the webview
   const agentIds = [...agents.keys()].sort((a, b) => a - b);
   const folderNames: Record<number, string> = {};
+  const terminalApps: Record<number, string> = {};
+  const projectPaths: Record<number, string> = {};
   for (const [id, agent] of agents) {
     if (agent.folderName) folderNames[id] = agent.folderName;
+    if (agent.terminalApp) terminalApps[id] = agent.terminalApp;
+    if (agent.projectPath) projectPaths[id] = agent.projectPath;
   }
-  send({ type: 'existingAgents', agents: agentIds, agentMeta: {}, folderNames });
+  send({
+    type: 'existingAgents',
+    agents: agentIds,
+    agentMeta: {},
+    folderNames,
+    terminalApps,
+    projectPaths,
+  });
 
   // Send layout LAST - this triggers the webview to flush pendingAgents into OfficeState
   const savedLayout = readLayoutFromFile();
@@ -473,6 +587,10 @@ function main(): void {
     cleanupStaleAgents();
   }, PROJECT_SCAN_INTERVAL_MS);
 
+  // Start terminal detection
+  updateTerminalInfo();
+  setInterval(updateTerminalInfo, TERMINAL_DETECT_INTERVAL_MS);
+
   server.listen(port, () => {
     console.log(`\n  Pixel Agents standalone server running at:`);
     console.log(`  http://localhost:${port}\n`);
@@ -497,7 +615,13 @@ function handleClientMessage(
       '[Server] "Open Claude" not available in standalone mode - start claude from your terminal',
     );
   } else if (msg.type === 'focusAgent') {
-    // Cannot focus terminal in standalone mode
+    const agentId = msg.id as number;
+    const agent = agents.get(agentId);
+    let success = false;
+    if (agent?.terminalApp && agent.claudePid && agent.projectPath) {
+      success = focusTerminal(agent.terminalApp, agent.claudePid, agent.projectPath);
+    }
+    broadcast({ type: 'focusResult', id: agentId, success });
   } else if (msg.type === 'closeAgent') {
     // Cannot close external terminal sessions
   } else if (msg.type === 'setSoundEnabled') {

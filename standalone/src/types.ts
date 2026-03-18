@@ -14,6 +14,10 @@ export interface AgentState {
   permissionSent: boolean;
   hadToolsInTurn: boolean;
   folderName?: string;
+  terminalApp?: string;
+  claudePid?: number;
+  shellPid?: number | null;
+  projectPath?: string;
 }
 
 export interface PersistedAgent {
