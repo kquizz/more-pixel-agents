@@ -223,17 +223,17 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           }
         }
 
-        // A seat is a "workstation" if there's a PC within 3 tiles in any direction
-        // (PC sits on desk, desk is adjacent to chair = 2 tiles away)
-        for (let dy = -3; dy <= 3; dy++) {
-          for (let dx = -3; dx <= 3; dx++) {
+        // Check distance to nearest PC — seats closer to PCs are workstations
+        let pcDistance = Infinity;
+        for (let dy = -4; dy <= 4; dy++) {
+          for (let dx = -4; dx <= 4; dx++) {
             if (pcTiles.has(`${tileCol + dx},${tileRow + dy}`)) {
-              facesDesk = true;
-              break;
+              const dist = Math.abs(dx) + Math.abs(dy);
+              if (dist < pcDistance) pcDistance = dist;
             }
           }
-          if (facesDesk) break;
         }
+        if (pcDistance <= 2) facesDesk = true; // only direct neighbors of PC/desk
 
         // Apply chair orientation if specified
         if (entry.orientation) {
@@ -248,6 +248,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           seatRow: tileRow,
           facingDir,
           ...(facesDesk ? { facesDesk: true } : {}),
+          ...(pcDistance < Infinity ? { pcDistance } : {}),
           assigned: false,
         });
         seatCount++;

@@ -178,10 +178,11 @@ export class OfficeState {
 
   private findFreeSeat(preferDesk?: boolean): string | null {
     if (preferDesk) {
-      // First try desk-facing seats
-      for (const [uid, seat] of this.seats) {
-        if (!seat.assigned && seat.facesDesk) return uid;
-      }
+      // Sort available seats by PC distance (closest first = best workstation)
+      const available = Array.from(this.seats.entries())
+        .filter(([, s]) => !s.assigned && s.facesDesk)
+        .sort((a, b) => (a[1].pcDistance ?? Infinity) - (b[1].pcDistance ?? Infinity));
+      if (available.length > 0) return available[0][0];
     } else if (preferDesk === false) {
       // First try non-desk seats (couches, lounge chairs)
       for (const [uid, seat] of this.seats) {

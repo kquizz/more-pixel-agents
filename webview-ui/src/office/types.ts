@@ -65,6 +65,8 @@ export interface Seat {
   facingDir: Direction;
   /** Whether this seat faces an adjacent desk tile */
   facesDesk?: boolean;
+  /** Distance to nearest PC (lower = closer to a workstation) */
+  pcDistance?: number;
   assigned: boolean;
 }
 
