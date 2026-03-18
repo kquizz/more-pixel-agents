@@ -7,7 +7,7 @@ import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
 import { setCharacterTemplates } from '../office/sprites/spriteData.js';
 import { extractToolName } from '../office/toolUtils.js';
-import type { OfficeLayout, ToolActivity } from '../office/types.js';
+import type { OfficeLayout, TodoItem, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { vscode } from '../vscodeApi.js';
 
@@ -58,6 +58,7 @@ export interface ExtensionMessageState {
   loadedAssets?: { catalog: FurnitureAsset[]; sprites: Record<string, string[][]> };
   workspaceFolders: WorkspaceFolder[];
   isStandalone: boolean;
+  todos: TodoItem[];
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -89,6 +90,7 @@ export function useExtensionMessages(
   >();
   const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([]);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -440,6 +442,47 @@ export function useExtensionMessages(
         } catch (err) {
           console.error(`❌ Webview: Error processing furnitureAssetsLoaded:`, err);
         }
+      } else if (msg.type === 'todosLoaded') {
+        const todosRecord = msg.todos as Record<
+          number,
+          Array<{
+            taskId: string;
+            subject: string;
+            status: 'pending' | 'in_progress' | 'completed';
+          }>
+        >;
+        const flat: TodoItem[] = [];
+        for (const [agentIdStr, items] of Object.entries(todosRecord)) {
+          const agentId = Number(agentIdStr);
+          for (const item of items) {
+            flat.push({ taskId: item.taskId, subject: item.subject, status: item.status, agentId });
+          }
+        }
+        setTodos(flat);
+      } else if (msg.type === 'todoCreated') {
+        const agentId = msg.agentId as number;
+        const taskId = msg.taskId as string;
+        const subject = msg.subject as string;
+        const status = (msg.status as TodoItem['status']) || 'pending';
+        setTodos((prev) => {
+          if (prev.some((t) => t.taskId === taskId)) return prev;
+          return [...prev, { taskId, subject, status, agentId }];
+        });
+      } else if (msg.type === 'todoUpdated') {
+        const taskId = msg.taskId as string;
+        const status = msg.status as TodoItem['status'];
+        const subject = msg.subject as string | undefined;
+        setTodos((prev) =>
+          prev.map((t) =>
+            t.taskId === taskId
+              ? { ...t, status, ...(subject !== undefined ? { subject } : {}) }
+              : t,
+          ),
+        );
+      } else if (msg.type === 'todoCompleted') {
+        const agentId = msg.agentId as number;
+        // Task 6 will implement triggerWhiteboardVisit; for now just log
+        console.log(`[Webview] Todo completed by agent ${agentId} — whiteboard visit pending`);
       }
     };
     window.addEventListener('message', handler);
@@ -459,5 +502,6 @@ export function useExtensionMessages(
     loadedAssets,
     workspaceFolders,
     isStandalone,
+    todos,
   };
 }

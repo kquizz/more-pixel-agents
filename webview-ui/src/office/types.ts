@@ -87,6 +87,13 @@ export interface ToolActivity {
   permissionWait?: boolean;
 }
 
+export interface TodoItem {
+  taskId: string;
+  subject: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  agentId: number;
+}
+
 export const EditTool = {
   TILE_PAINT: 'tile_paint',
   WALL_PAINT: 'wall_paint',
