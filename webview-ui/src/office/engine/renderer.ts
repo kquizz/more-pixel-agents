@@ -735,7 +735,8 @@ export function renderFrame(
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
 
   // Project path labels below characters
-  renderCharacterLabels(ctx, characters, offsetX, offsetY, zoom);
+  // Labels disabled — agents are identified by their consistent character appearance
+  // renderCharacterLabels(ctx, characters, offsetX, offsetY, zoom);
 
   // Editor overlays
   if (editor) {

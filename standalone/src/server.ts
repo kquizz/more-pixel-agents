@@ -383,23 +383,19 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
   }
 
   // Resolve character ID from config
+  // Character assignment: config takes priority, otherwise deterministic hash of folder path
   const configCharId = projectPath ? resolveCharacterId(projectPath) : -1;
-  let characterId: number | undefined;
+  let characterId: number;
   if (configCharId >= 0) {
     characterId = configCharId;
   } else {
-    // Auto-assign: cycle through 0-5, skipping IDs already in use
-    const usedIds = new Set<number>();
-    for (const [, a] of agents) {
-      if (a.characterId !== undefined) usedIds.add(a.characterId);
+    // Hash the project dir name so the same folder always gets the same character
+    const dirName = path.basename(projectDir);
+    let hash = 0;
+    for (let i = 0; i < dirName.length; i++) {
+      hash = ((hash << 5) - hash + dirName.charCodeAt(i)) | 0;
     }
-    for (let i = 0; i < 6; i++) {
-      if (!usedIds.has(i)) {
-        characterId = i;
-        break;
-      }
-    }
-    // If all 6 are used, leave undefined (webview will auto-assign)
+    characterId = ((hash % 6) + 6) % 6;
   }
 
   const agent: AgentState = {
