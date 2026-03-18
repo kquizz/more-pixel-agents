@@ -190,4 +190,8 @@ export interface Character {
   matrixEffectSeeds: number[];
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string;
+  /** Terminal application name (e.g., "Ghostty", "iTerm2") — standalone mode only */
+  terminalApp?: string;
+  /** Project directory path — standalone mode only */
+  projectPath?: string;
 }

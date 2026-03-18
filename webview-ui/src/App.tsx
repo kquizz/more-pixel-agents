@@ -252,6 +252,7 @@ function App() {
       <OfficeCanvas
         officeState={officeState}
         onClick={handleClick}
+        agentStatuses={agentStatuses}
         isEditMode={editor.isEditMode}
         editorState={editorState}
         onEditorTileAction={editor.handleEditorTileAction}

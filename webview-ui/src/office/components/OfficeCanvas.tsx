@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   CAMERA_FOLLOW_LERP,
@@ -24,9 +24,19 @@ import { renderFrame } from '../engine/renderer.js';
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 
+interface TooltipInfo {
+  x: number;
+  y: number;
+  folderName?: string;
+  terminalApp?: string;
+  projectPath?: string;
+  status: string;
+}
+
 interface OfficeCanvasProps {
   officeState: OfficeState;
   onClick: (agentId: number) => void;
+  agentStatuses: Record<number, string>;
   isEditMode: boolean;
   editorState: EditorState;
   onEditorTileAction: (col: number, row: number) => void;
@@ -44,6 +54,7 @@ interface OfficeCanvasProps {
 export function OfficeCanvas({
   officeState,
   onClick,
+  agentStatuses,
   isEditMode,
   editorState,
   onEditorTileAction,
@@ -70,6 +81,8 @@ export function OfficeCanvas({
   const isEraseDraggingRef = useRef(false);
   // Zoom scroll accumulator for trackpad pinch sensitivity
   const zoomAccumulatorRef = useRef(0);
+  // Tooltip state for character hover
+  const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
   // Clamp pan so the map edge can't go past a margin inside the viewport
   const clampPan = useCallback(
@@ -451,6 +464,7 @@ export function OfficeCanvas({
             }
           }
         }
+        setTooltip(null);
         return;
       }
 
@@ -480,9 +494,28 @@ export function OfficeCanvas({
         canvas.style.cursor = cursor;
       }
       officeState.hoveredAgentId = hitId;
+
+      // Update tooltip
+      if (hitId !== null) {
+        const ch = officeState.characters.get(hitId);
+        if (ch) {
+          const status = agentStatuses[hitId] || (ch.isActive ? 'active' : 'idle');
+          setTooltip({
+            x: pos.screenX,
+            y: pos.screenY,
+            folderName: ch.folderName,
+            terminalApp: ch.terminalApp,
+            projectPath: ch.projectPath,
+            status,
+          });
+        }
+      } else {
+        setTooltip(null);
+      }
     },
     [
       officeState,
+      agentStatuses,
       screenToWorld,
       screenToTile,
       isEditMode,
@@ -741,6 +774,7 @@ export function OfficeCanvas({
     editorState.ghostRow = -1;
     officeState.hoveredAgentId = null;
     officeState.hoveredTile = null;
+    setTooltip(null);
   }, [officeState, editorState]);
 
   const handleContextMenu = useCallback(
@@ -814,6 +848,49 @@ export function OfficeCanvas({
         onContextMenu={handleContextMenu}
         style={{ display: 'block' }}
       />
+      {tooltip && (
+        <div
+          style={{
+            position: 'absolute',
+            left: tooltip.x + 12,
+            top: tooltip.y - 8,
+            background: 'rgba(30, 30, 46, 0.95)',
+            color: '#cdd6f4',
+            border: '1px solid #585b70',
+            borderRadius: 4,
+            padding: '6px 10px',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            lineHeight: 1.5,
+            pointerEvents: 'none',
+            zIndex: 50,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          {tooltip.projectPath && (
+            <div style={{ fontWeight: 'bold', color: '#89b4fa' }}>
+              {tooltip.folderName || tooltip.projectPath}
+            </div>
+          )}
+          {!tooltip.projectPath && tooltip.folderName && (
+            <div style={{ fontWeight: 'bold', color: '#89b4fa' }}>{tooltip.folderName}</div>
+          )}
+          {tooltip.terminalApp && <div style={{ color: '#a6adc8' }}>{tooltip.terminalApp}</div>}
+          <div
+            style={{
+              color:
+                tooltip.status === 'active'
+                  ? '#a6e3a1'
+                  : tooltip.status === 'waiting'
+                    ? '#f9e2af'
+                    : '#9399b2',
+            }}
+          >
+            {tooltip.status}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

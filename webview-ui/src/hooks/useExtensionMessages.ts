@@ -101,6 +101,8 @@ export function useExtensionMessages(
       hueShift?: number;
       seatId?: string;
       folderName?: string;
+      terminalApp?: string;
+      projectPath?: string;
     }> = [];
 
     const handler = (e: MessageEvent) => {
@@ -125,6 +127,12 @@ export function useExtensionMessages(
         // Add buffered agents now that layout (and seats) are correct
         for (const p of pendingAgents) {
           os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName);
+          // Store terminal info on the character for tooltip display
+          const ch = os.characters.get(p.id);
+          if (ch) {
+            if (p.terminalApp) ch.terminalApp = p.terminalApp;
+            if (p.projectPath) ch.projectPath = p.projectPath;
+          }
         }
         pendingAgents = [];
         layoutReadyRef.current = true;
@@ -138,9 +146,17 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentCreated') {
         const id = msg.id as number;
         const folderName = msg.folderName as string | undefined;
+        const terminalApp = msg.terminalApp as string | undefined;
+        const projectPath = msg.projectPath as string | undefined;
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]));
         setSelectedAgent(id);
         os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
+        // Store terminal info on the character for tooltip display
+        const ch = os.characters.get(id);
+        if (ch) {
+          if (terminalApp) ch.terminalApp = terminalApp;
+          if (projectPath) ch.projectPath = projectPath;
+        }
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number;
@@ -175,6 +191,8 @@ export function useExtensionMessages(
           { palette?: number; hueShift?: number; seatId?: string }
         >;
         const folderNames = (msg.folderNames || {}) as Record<number, string>;
+        const terminalApps = (msg.terminalApps || {}) as Record<number, string>;
+        const projectPaths = (msg.projectPaths || {}) as Record<number, string>;
         // Buffer agents — they'll be added in layoutLoaded after seats are built
         for (const id of incoming) {
           const m = meta[id];
@@ -184,6 +202,8 @@ export function useExtensionMessages(
             hueShift: m?.hueShift,
             seatId: m?.seatId,
             folderName: folderNames[id],
+            terminalApp: terminalApps[id],
+            projectPath: projectPaths[id],
           });
         }
         setAgents((prev) => {
