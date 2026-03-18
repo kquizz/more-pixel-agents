@@ -470,6 +470,11 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     characterId: agent.characterId,
   });
 
+  // If no active terminal detected, start as idle (don't show typing animation)
+  if (!agent.terminalApp) {
+    broadcast({ type: 'agentStatus', id, status: 'idle' });
+  }
+
   startFileWatching(id, filePath);
   readNewLines(id);
 }
