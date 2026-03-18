@@ -148,9 +148,11 @@ export function useExtensionMessages(
         const folderName = msg.folderName as string | undefined;
         const terminalApp = msg.terminalApp as string | undefined;
         const projectPath = msg.projectPath as string | undefined;
+        const characterId = msg.characterId as number | undefined;
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]));
         setSelectedAgent(id);
-        os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
+        // If a characterId is provided from config, use it as the palette
+        os.addAgent(id, characterId, undefined, undefined, undefined, folderName);
         // Store terminal info on the character for tooltip display
         const ch = os.characters.get(id);
         if (ch) {
@@ -193,12 +195,13 @@ export function useExtensionMessages(
         const folderNames = (msg.folderNames || {}) as Record<number, string>;
         const terminalApps = (msg.terminalApps || {}) as Record<number, string>;
         const projectPaths = (msg.projectPaths || {}) as Record<number, string>;
+        const characterIds = (msg.characterIds || {}) as Record<number, number>;
         // Buffer agents — they'll be added in layoutLoaded after seats are built
         for (const id of incoming) {
           const m = meta[id];
           pendingAgents.push({
             id,
-            palette: m?.palette,
+            palette: characterIds[id] !== undefined ? characterIds[id] : m?.palette,
             hueShift: m?.hueShift,
             seatId: m?.seatId,
             folderName: folderNames[id],
@@ -384,6 +387,14 @@ export function useExtensionMessages(
         setSubagentCharacters((prev) =>
           prev.filter((s) => !(s.parentAgentId === id && s.parentToolId === parentToolId)),
         );
+      } else if (msg.type === 'agentCharacterUpdate') {
+        const id = msg.id as number;
+        const characterId = msg.characterId as number;
+        const ch = os.characters.get(id);
+        if (ch && characterId >= 0 && characterId <= 5) {
+          ch.palette = characterId;
+          ch.hueShift = 0;
+        }
       } else if (msg.type === 'characterSpritesLoaded') {
         const characters = msg.characters as Array<{
           down: string[][][];

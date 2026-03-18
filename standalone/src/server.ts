@@ -7,6 +7,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 
 import { loadAllAssets } from './assetLoader.js';
+import { getConfig, loadConfig, resolveCharacterId, watchConfig } from './config.js';
 import {
   DEFAULT_PORT,
   FILE_WATCHER_POLL_INTERVAL_MS,
@@ -269,8 +270,8 @@ function removeAgent(agentId: number): void {
 function isFileActive(filePath: string): boolean {
   try {
     const stat = fs.statSync(filePath);
-    // Consider a file active if modified in the last 30 minutes
-    return Date.now() - stat.mtimeMs < 30 * 60 * 1000;
+    const staleMinutes = getConfig().staleTimeout;
+    return Date.now() - stat.mtimeMs < staleMinutes * 60 * 1000;
   } catch {
     return false;
   }
@@ -300,6 +301,26 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
   // Look up terminal info from cache
   const termInfo = terminalCache.get(projectPath);
 
+  // Resolve character ID from config
+  const configCharId = projectPath ? resolveCharacterId(projectPath) : -1;
+  let characterId: number | undefined;
+  if (configCharId >= 0) {
+    characterId = configCharId;
+  } else {
+    // Auto-assign: cycle through 0-5, skipping IDs already in use
+    const usedIds = new Set<number>();
+    for (const [, a] of agents) {
+      if (a.characterId !== undefined) usedIds.add(a.characterId);
+    }
+    for (let i = 0; i < 6; i++) {
+      if (!usedIds.has(i)) {
+        characterId = i;
+        break;
+      }
+    }
+    // If all 6 are used, leave undefined (webview will auto-assign)
+  }
+
   const agent: AgentState = {
     id,
     projectDir,
@@ -320,6 +341,7 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     terminalApp: termInfo?.terminalApp,
     claudePid: termInfo?.claudePid,
     shellPid: termInfo?.shellPid ?? null,
+    characterId,
   };
 
   // Skip to near end of file - only read recent activity
@@ -339,6 +361,7 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     folderName: projectName,
     terminalApp: agent.terminalApp,
     projectPath: agent.projectPath,
+    characterId: agent.characterId,
   });
 
   startFileWatching(id, filePath);
@@ -385,7 +408,7 @@ function cleanupStaleAgents(): void {
       removeAgent(id);
       continue;
     }
-    // Remove agents whose sessions haven't been active for 30 minutes
+    // Remove agents whose sessions haven't been active for the configured stale timeout
     if (!isFileActive(agent.jsonlFile) && !isFileGrowing(agent.jsonlFile)) {
       console.log(`[Agent ${id}] Session inactive, cleaning up`);
       removeAgent(id);
@@ -417,10 +440,12 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
   const folderNames: Record<number, string> = {};
   const terminalApps: Record<number, string> = {};
   const projectPaths: Record<number, string> = {};
+  const characterIds: Record<number, number> = {};
   for (const [id, agent] of agents) {
     if (agent.folderName) folderNames[id] = agent.folderName;
     if (agent.terminalApp) terminalApps[id] = agent.terminalApp;
     if (agent.projectPath) projectPaths[id] = agent.projectPath;
+    if (agent.characterId !== undefined) characterIds[id] = agent.characterId;
   }
   send({
     type: 'existingAgents',
@@ -429,6 +454,7 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
     folderNames,
     terminalApps,
     projectPaths,
+    characterIds,
   });
 
   // Send layout LAST - this triggers the webview to flush pendingAgents into OfficeState
@@ -488,7 +514,8 @@ function getMimeType(filePath: string): string {
 // -- Main --
 
 function main(): void {
-  const port = parseInt(process.env.PORT || '', 10) || DEFAULT_PORT;
+  const config = loadConfig();
+  const port = parseInt(process.env.PORT || '', 10) || config.port || DEFAULT_PORT;
 
   // Find assets - check dist/assets first, then webview-ui/public/assets
   const projectRoot = path.resolve(__dirname, '..');
@@ -590,6 +617,22 @@ function main(): void {
   // Start terminal detection
   updateTerminalInfo();
   setInterval(updateTerminalInfo, TERMINAL_DETECT_INTERVAL_MS);
+
+  // Watch config for changes — reassign characters and broadcast updates
+  watchConfig(() => {
+    console.log('[Config] Configuration changed, reassigning characters');
+    for (const [id, agent] of agents) {
+      const newCharId = agent.projectPath ? resolveCharacterId(agent.projectPath) : -1;
+      if (newCharId >= 0 && newCharId !== agent.characterId) {
+        agent.characterId = newCharId;
+        broadcast({
+          type: 'agentCharacterUpdate',
+          id,
+          characterId: newCharId,
+        });
+      }
+    }
+  });
 
   server.listen(port, () => {
     console.log(`\n  Pixel Agents standalone server running at:`);
