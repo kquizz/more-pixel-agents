@@ -1,4 +1,6 @@
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
+import * as path from 'path';
 
 interface BeadsIssue {
   id: string;
@@ -23,12 +25,30 @@ function mapBeadsStatus(status: string): string {
   }
 }
 
+/**
+ * Walk up the directory tree to find the nearest .beads/ directory.
+ * Returns the directory containing .beads/, or null if not found.
+ */
+export function findBeadsRoot(startPath: string): string | null {
+  let current = startPath;
+  // Walk up at most 5 levels
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(path.join(current, '.beads'))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break; // hit filesystem root
+    current = parent;
+  }
+  return null;
+}
+
 export function pollBeads(
-  projectPath: string,
+  beadsRoot: string,
 ): Array<{ taskId: string; subject: string; status: string }> {
   try {
     const output = execSync('bd list --json', {
-      cwd: projectPath,
+      cwd: beadsRoot,
       encoding: 'utf-8',
       timeout: 5000,
     });

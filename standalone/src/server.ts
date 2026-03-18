@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 
 import { loadAllAssets } from './assetLoader.js';
-import { pollBeads } from './beadsPoller.js';
+import { findBeadsRoot, pollBeads } from './beadsPoller.js';
 import { getConfig, loadConfig, resolveCharacterId, watchConfig } from './config.js';
 import {
   DEFAULT_PORT,
@@ -228,9 +228,9 @@ function handleTodoBroadcast(msg: Record<string, unknown>): void {
   } else if (msg.type === 'beadsPollRequested') {
     const agentId = msg.agentId as number;
     const agent = agents.get(agentId);
-    if (agent?.hasBeads && agent.projectPath) {
+    if (agent?.hasBeads && agent.beadsRoot) {
       const prevTodos = agentTodos.get(agentId);
-      const issues = pollBeads(agent.projectPath);
+      const issues = pollBeads(agent.beadsRoot);
 
       // Detect newly closed issues (for whiteboard animation)
       if (prevTodos) {
@@ -462,11 +462,10 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     characterId = ((hash % 6) + 6) % 6;
   }
 
-  // Check if project has a .beads/ directory
+  // Check if project (or a parent directory) has a .beads/ directory
   const resolvedProjectPath = termInfo?.cwd ?? projectPath;
-  const hasBeads = resolvedProjectPath
-    ? existsSync(path.join(resolvedProjectPath, '.beads'))
-    : false;
+  const beadsRoot = resolvedProjectPath ? findBeadsRoot(resolvedProjectPath) : null;
+  const hasBeads = beadsRoot !== null;
 
   const agent: AgentState = {
     id,
@@ -491,6 +490,7 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     tty: termInfo?.tty ?? null,
     characterId,
     hasBeads,
+    beadsRoot: beadsRoot ?? undefined,
   };
 
   // Skip to near end of file - only read recent activity
@@ -504,7 +504,7 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
 
   agents.set(id, agent);
   if (hasBeads) {
-    console.log(`[Agent ${id}] BEADS detected in ${resolvedProjectPath}`);
+    console.log(`[Agent ${id}] BEADS detected at ${beadsRoot} (project: ${resolvedProjectPath})`);
   }
   console.log(`[Agent ${id}] Adopted session in ${projectName}: ${path.basename(filePath)}`);
   broadcast({
@@ -525,8 +525,8 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
   readNewLines(id);
 
   // Initial BEADS poll
-  if (agent.hasBeads && agent.projectPath) {
-    const issues = pollBeads(agent.projectPath);
+  if (agent.hasBeads && agent.beadsRoot) {
+    const issues = pollBeads(agent.beadsRoot);
     if (issues.length > 0) {
       const todoMap = new Map<string, { subject: string; status: string }>();
       for (const issue of issues) {
@@ -625,6 +625,18 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
     projectPaths,
     characterIds,
   });
+
+  // Re-poll BEADS for all agents on client connect (ensures fresh data)
+  for (const [agentId, agent] of agents) {
+    if (agent.hasBeads && agent.beadsRoot) {
+      const issues = pollBeads(agent.beadsRoot);
+      const todoMap = new Map<string, { subject: string; status: string }>();
+      for (const issue of issues) {
+        todoMap.set(issue.taskId, { subject: issue.subject, status: issue.status });
+      }
+      agentTodos.set(agentId, todoMap);
+    }
+  }
 
   // Send existing todos for all agents
   const allTodos: Record<number, Array<{ taskId: string; subject: string; status: string }>> = {};
