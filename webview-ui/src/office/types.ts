@@ -63,6 +63,8 @@ export interface Seat {
   seatRow: number;
   /** Direction character faces when sitting (toward adjacent desk) */
   facingDir: Direction;
+  /** Whether this seat faces an adjacent desk tile */
+  facesDesk?: boolean;
   assigned: boolean;
 }
 

@@ -176,7 +176,19 @@ export class OfficeState {
     return result;
   }
 
-  private findFreeSeat(): string | null {
+  private findFreeSeat(preferDesk?: boolean): string | null {
+    if (preferDesk) {
+      // First try desk-facing seats
+      for (const [uid, seat] of this.seats) {
+        if (!seat.assigned && seat.facesDesk) return uid;
+      }
+    } else if (preferDesk === false) {
+      // First try non-desk seats (couches, lounge chairs)
+      for (const [uid, seat] of this.seats) {
+        if (!seat.assigned && !seat.facesDesk) return uid;
+      }
+    }
+    // Fall back to any unassigned seat
     for (const [uid, seat] of this.seats) {
       if (!seat.assigned) return uid;
     }
@@ -240,7 +252,7 @@ export class OfficeState {
       }
     }
     if (!seatId) {
-      seatId = this.findFreeSeat();
+      seatId = this.findFreeSeat(true);
     }
 
     let ch: Character;
