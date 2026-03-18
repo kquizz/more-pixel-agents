@@ -718,6 +718,7 @@ export function OfficeCanvas({
           officeState.cameraFollowId = hitId;
         }
         onClick(hitId); // still focus terminal
+        setTooltip(null); // clear tooltip — browser may lose focus
         return;
       }
 
@@ -776,6 +777,13 @@ export function OfficeCanvas({
     officeState.hoveredTile = null;
     setTooltip(null);
   }, [officeState, editorState]);
+
+  // Clear tooltip when browser window loses focus (e.g., after clicking to switch terminals)
+  useEffect(() => {
+    const handleBlur = () => setTooltip(null);
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, []);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
