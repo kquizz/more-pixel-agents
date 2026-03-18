@@ -743,6 +743,9 @@ function handleClientMessage(
     const agentId = msg.id as number;
     const agent = agents.get(agentId);
     let success = false;
+    console.log(
+      `[Focus] Agent ${agentId}: app=${agent?.terminalApp ?? 'none'} pid=${agent?.claudePid ?? 'none'} tty=${agent?.tty ?? 'none'} path=${agent?.projectPath ?? 'none'}`,
+    );
     if (agent?.terminalApp && agent.claudePid && agent.projectPath) {
       success = focusTerminal(
         agent.terminalApp,
