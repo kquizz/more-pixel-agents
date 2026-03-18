@@ -884,7 +884,11 @@ export function OfficeCanvas({
           {!tooltip.projectPath && tooltip.folderName && (
             <div style={{ fontWeight: 'bold', color: '#89b4fa' }}>{tooltip.folderName}</div>
           )}
-          {tooltip.terminalApp && <div style={{ color: '#a6adc8' }}>{tooltip.terminalApp}</div>}
+          {tooltip.terminalApp ? (
+            <div style={{ color: '#a6adc8' }}>{tooltip.terminalApp}</div>
+          ) : (
+            <div style={{ color: '#585b70', fontStyle: 'italic' }}>no active process</div>
+          )}
           <div
             style={{
               color:

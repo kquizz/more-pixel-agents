@@ -112,24 +112,9 @@ function encodePath(fsPath: string): string {
   return fsPath.replace(/[^a-zA-Z0-9-]/g, '-');
 }
 
-let terminalLogOnce = false;
 function updateTerminalInfo(): void {
   try {
     terminalCache = detectTerminals();
-
-    if (!terminalLogOnce) {
-      terminalLogOnce = true;
-      console.log(`[Terminal] Detected ${terminalCache.size} Claude process(es):`);
-      for (const [pid, info] of terminalCache) {
-        console.log(`  PID=${pid} app=${info.terminalApp} tty=${info.tty} cwd=${info.cwd}`);
-      }
-      console.log(`[Terminal] Agents to match:`);
-      for (const [, agent] of agents) {
-        console.log(
-          `  Agent ${agent.id} dir=${path.basename(agent.projectDir)} claudePid=${agent.claudePid ?? 'none'} termApp=${agent.terminalApp ?? 'none'}`,
-        );
-      }
-    }
 
     // Match terminal info to agents.
     // The cache is keyed by Claude PID, so multiple agents in the same folder work.
@@ -153,8 +138,26 @@ function updateTerminalInfo(): void {
         continue;
       }
 
-      // Otherwise, find a matching terminal by encoded CWD
-      // Use a Set to track which PIDs are already claimed by other agents
+      // If agent had a claudePid but it's no longer in cache, the process exited
+      if (agent.claudePid && !terminalCache.has(agent.claudePid)) {
+        const hadTerminal = !!agent.terminalApp;
+        agent.claudePid = undefined;
+        agent.terminalApp = undefined;
+        agent.shellPid = null;
+        agent.tty = null;
+        // Notify webview that this agent lost its terminal
+        if (hadTerminal) {
+          broadcast({
+            type: 'agentTerminalUpdate',
+            id: agent.id,
+            terminalApp: null,
+            projectPath: agent.projectPath,
+          });
+        }
+        continue;
+      }
+
+      // No PID yet — find a matching terminal by encoded CWD
       const claimedPids = new Set<number>();
       for (const [, a] of agents) {
         if (a.claudePid) claimedPids.add(a.claudePid);
@@ -168,6 +171,13 @@ function updateTerminalInfo(): void {
           agent.shellPid = info.shellPid;
           agent.tty = info.tty;
           agent.projectPath = info.cwd;
+          // Notify webview that this agent now has a terminal
+          broadcast({
+            type: 'agentTerminalUpdate',
+            id: agent.id,
+            terminalApp: info.terminalApp,
+            projectPath: info.cwd,
+          });
           break;
         }
       }

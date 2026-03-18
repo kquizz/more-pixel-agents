@@ -387,6 +387,13 @@ export function useExtensionMessages(
         setSubagentCharacters((prev) =>
           prev.filter((s) => !(s.parentAgentId === id && s.parentToolId === parentToolId)),
         );
+      } else if (msg.type === 'agentTerminalUpdate') {
+        const id = msg.id as number;
+        const ch = os.characters.get(id);
+        if (ch) {
+          ch.terminalApp = (msg.terminalApp as string) || undefined;
+          if (msg.projectPath) ch.projectPath = msg.projectPath as string;
+        }
       } else if (msg.type === 'agentCharacterUpdate') {
         const id = msg.id as number;
         const characterId = msg.characterId as number;
