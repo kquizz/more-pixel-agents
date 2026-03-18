@@ -31,6 +31,7 @@ interface TooltipInfo {
   terminalApp?: string;
   projectPath?: string;
   status: string;
+  isSubagent?: boolean;
 }
 
 interface OfficeCanvasProps {
@@ -505,13 +506,26 @@ export function OfficeCanvas({
         const ch = officeState.characters.get(hitId);
         if (ch) {
           const status = agentStatuses[hitId] || (ch.isActive ? 'active' : 'idle');
+          // For sub-agents, get parent's info
+          let folderName = ch.folderName;
+          let terminalApp = ch.terminalApp;
+          let projectPath = ch.projectPath;
+          if (ch.isSubagent && ch.parentAgentId != null) {
+            const parent = officeState.characters.get(ch.parentAgentId);
+            if (parent) {
+              folderName = parent.folderName;
+              terminalApp = parent.terminalApp;
+              projectPath = parent.projectPath;
+            }
+          }
           setTooltip({
             x: pos.screenX,
             y: pos.screenY,
-            folderName: ch.folderName,
-            terminalApp: ch.terminalApp,
-            projectPath: ch.projectPath,
+            folderName,
+            terminalApp,
+            projectPath,
             status,
+            isSubagent: ch.isSubagent,
           });
         }
       } else {
@@ -889,7 +903,9 @@ export function OfficeCanvas({
           {!tooltip.projectPath && tooltip.folderName && (
             <div style={{ fontWeight: 'bold', color: '#89b4fa' }}>{tooltip.folderName}</div>
           )}
-          {tooltip.terminalApp ? (
+          {tooltip.isSubagent ? (
+            <div style={{ color: '#b4befe', fontStyle: 'italic' }}>sub-agent</div>
+          ) : tooltip.terminalApp ? (
             <div style={{ color: '#a6adc8' }}>{tooltip.terminalApp}</div>
           ) : (
             <div style={{ color: '#585b70', fontStyle: 'italic' }}>no active process</div>
