@@ -481,8 +481,7 @@ export function useExtensionMessages(
         );
       } else if (msg.type === 'todoCompleted') {
         const agentId = msg.agentId as number;
-        // Task 6 will implement triggerWhiteboardVisit; for now just log
-        console.log(`[Webview] Todo completed by agent ${agentId} — whiteboard visit pending`);
+        os.triggerWhiteboardVisit(agentId);
       }
     };
     window.addEventListener('message', handler);

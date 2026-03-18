@@ -203,4 +203,12 @@ export interface Character {
   terminalApp?: string;
   /** Project directory path — standalone mode only */
   projectPath?: string;
+  /** Active whiteboard visit animation state */
+  whiteboardVisit?: {
+    phase: 'walking_to' | 'writing' | 'walking_back';
+    targetCol: number;
+    targetRow: number;
+    returnSeatId: string;
+    timer: number;
+  };
 }

@@ -757,6 +757,61 @@ export class OfficeState {
     return results;
   }
 
+  triggerWhiteboardVisit(agentId: number): void {
+    const ch = this.characters.get(agentId);
+    if (!ch || !ch.seatId || ch.whiteboardVisit) return;
+    const whiteboards = this.getWhiteboardPositions();
+    if (whiteboards.length === 0) return;
+    // Pick the nearest whiteboard
+    let bestWb = whiteboards[0];
+    let bestDist = Math.abs(ch.tileCol - bestWb.col) + Math.abs(ch.tileRow - bestWb.row);
+    for (let i = 1; i < whiteboards.length; i++) {
+      const d =
+        Math.abs(ch.tileCol - whiteboards[i].col) + Math.abs(ch.tileRow - whiteboards[i].row);
+      if (d < bestDist) {
+        bestDist = d;
+        bestWb = whiteboards[i];
+      }
+    }
+    // Stand in front of whiteboard (one row below it)
+    const targetCol = bestWb.col;
+    const targetRow = bestWb.row + bestWb.height;
+    const returnSeatId = ch.seatId;
+    ch.whiteboardVisit = {
+      phase: 'walking_to',
+      targetCol,
+      targetRow,
+      returnSeatId,
+      timer: 0,
+    };
+    // Release current seat so character can walk freely
+    const seat = this.seats.get(ch.seatId);
+    if (seat) seat.assigned = false;
+    ch.seatId = null;
+    // Start walking to the whiteboard
+    const path = this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, this.tileMap, this.blockedTiles),
+    );
+    if (path.length > 0) {
+      ch.path = path;
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    }
+  }
+
+  isWhiteboardAt(worldX: number, worldY: number): boolean {
+    const col = Math.floor(worldX / TILE_SIZE);
+    const row = Math.floor(worldY / TILE_SIZE);
+    for (const wb of this.getWhiteboardPositions()) {
+      if (col >= wb.col && col < wb.col + wb.width && row >= wb.row && row < wb.row + wb.height) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   getCharacters(): Character[] {
     return Array.from(this.characters.values());
   }

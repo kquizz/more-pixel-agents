@@ -96,6 +96,110 @@ export function updateCharacter(
 ): void {
   ch.frameTimer += dt;
 
+  // Handle whiteboard visit phases
+  if (ch.whiteboardVisit) {
+    const visit = ch.whiteboardVisit;
+
+    if (visit.phase === 'walking_to') {
+      // Check if arrived at whiteboard target
+      if (ch.state !== CharacterState.WALK || ch.path.length === 0) {
+        const target = tileCenter(visit.targetCol, visit.targetRow);
+        const dist = Math.abs(ch.x - target.x) + Math.abs(ch.y - target.y);
+        if (dist < 2) {
+          // Arrived — start writing animation
+          visit.phase = 'writing';
+          visit.timer = 1.5;
+          ch.state = CharacterState.TYPE;
+          ch.dir = Direction.UP; // face the whiteboard
+          ch.frame = 0;
+          ch.frameTimer = 0;
+        } else if (ch.state !== CharacterState.WALK) {
+          // Not walking and not arrived — try to path again
+          const path = findPath(
+            ch.tileCol,
+            ch.tileRow,
+            visit.targetCol,
+            visit.targetRow,
+            tileMap,
+            blockedTiles,
+          );
+          if (path.length > 0) {
+            ch.path = path;
+            ch.moveProgress = 0;
+            ch.state = CharacterState.WALK;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+          } else {
+            // Can't reach whiteboard — abort visit
+            const seat = seats.get(visit.returnSeatId);
+            if (seat) {
+              seat.assigned = true;
+              ch.seatId = visit.returnSeatId;
+            }
+            ch.whiteboardVisit = undefined;
+          }
+        }
+      }
+      // Fall through to normal state machine for WALK movement
+    } else if (visit.phase === 'writing') {
+      // Animate typing while "writing" on whiteboard
+      if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
+        ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
+        ch.frame = (ch.frame + 1) % 2;
+      }
+      visit.timer -= dt;
+      if (visit.timer <= 0) {
+        // Done writing — walk back to seat
+        visit.phase = 'walking_back';
+        const seat = seats.get(visit.returnSeatId);
+        if (seat) {
+          seat.assigned = true;
+          ch.seatId = visit.returnSeatId;
+          const path = findPath(
+            ch.tileCol,
+            ch.tileRow,
+            seat.seatCol,
+            seat.seatRow,
+            tileMap,
+            blockedTiles,
+          );
+          if (path.length > 0) {
+            ch.path = path;
+            ch.moveProgress = 0;
+            ch.state = CharacterState.WALK;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+          } else {
+            // Already at seat or no path — just sit
+            ch.whiteboardVisit = undefined;
+            ch.state = CharacterState.TYPE;
+            ch.dir = seat.facingDir;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+          }
+        } else {
+          // Seat gone — abort
+          ch.whiteboardVisit = undefined;
+        }
+      }
+      return; // skip normal state machine during writing
+    } else if (visit.phase === 'walking_back') {
+      // Check if arrived back at seat
+      if (ch.seatId) {
+        const seat = seats.get(ch.seatId);
+        if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+          ch.whiteboardVisit = undefined;
+          ch.state = CharacterState.TYPE;
+          ch.dir = seat.facingDir;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+          return;
+        }
+      }
+      // Fall through to normal state machine for WALK movement
+    }
+  }
+
   switch (ch.state) {
     case CharacterState.TYPE: {
       if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
