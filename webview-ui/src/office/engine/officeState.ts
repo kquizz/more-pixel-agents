@@ -113,10 +113,11 @@ export class OfficeState {
       ch.seatId = null; // will be reassigned below
     }
 
-    // Second pass: assign remaining characters to free seats
+    // Second pass: assign remaining characters to free seats (prefer desks)
     for (const ch of this.characters.values()) {
       if (ch.seatId) continue;
-      const seatId = this.findFreeSeat();
+      const preferDesk = !ch.isSubagent;
+      const seatId = this.findFreeSeat(preferDesk);
       if (seatId) {
         this.seats.get(seatId)!.assigned = true;
         ch.seatId = seatId;
