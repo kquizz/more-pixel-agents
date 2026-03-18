@@ -225,15 +225,15 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
 
         // Check distance to nearest PC — seats closer to PCs are workstations
         let pcDistance = Infinity;
-        for (let dy = -4; dy <= 4; dy++) {
-          for (let dx = -4; dx <= 4; dx++) {
+        for (let dy = -6; dy <= 6; dy++) {
+          for (let dx = -6; dx <= 6; dx++) {
             if (pcTiles.has(`${tileCol + dx},${tileRow + dy}`)) {
               const dist = Math.abs(dx) + Math.abs(dy);
               if (dist < pcDistance) pcDistance = dist;
             }
           }
         }
-        if (pcDistance <= 2) facesDesk = true; // only direct neighbors of PC/desk
+        if (pcDistance <= 5) facesDesk = true;
 
         // Apply chair orientation if specified
         if (entry.orientation) {
