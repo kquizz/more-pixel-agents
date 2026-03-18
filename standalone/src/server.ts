@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -7,6 +8,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 
 import { loadAllAssets } from './assetLoader.js';
+import { pollBeads } from './beadsPoller.js';
 import { getConfig, loadConfig, resolveCharacterId, watchConfig } from './config.js';
 import {
   DEFAULT_PORT,
@@ -202,22 +204,56 @@ function updateTerminalInfo(): void {
 // -- Helpers --
 
 function handleTodoBroadcast(msg: Record<string, unknown>): void {
-  if (msg.type === 'todoCreated') {
+  if (msg.type === 'todoCreated' || msg.type === 'todoUpdated') {
     const agentId = msg.agentId as number;
-    const taskId = msg.taskId as string;
-    if (!agentTodos.has(agentId)) agentTodos.set(agentId, new Map());
-    agentTodos.get(agentId)!.set(taskId, {
-      subject: msg.subject as string,
-      status: 'pending',
-    });
-  } else if (msg.type === 'todoUpdated') {
+    const agent = agents.get(agentId);
+    if (agent?.hasBeads) return; // BEADS handles todos for this agent
+
+    if (msg.type === 'todoCreated') {
+      const taskId = msg.taskId as string;
+      if (!agentTodos.has(agentId)) agentTodos.set(agentId, new Map());
+      agentTodos.get(agentId)!.set(taskId, {
+        subject: msg.subject as string,
+        status: 'pending',
+      });
+    } else {
+      const taskId = msg.taskId as string;
+      const todos = agentTodos.get(agentId);
+      if (todos?.has(taskId)) {
+        const todo = todos.get(taskId)!;
+        todo.status = msg.status as string;
+        if (msg.subject) todo.subject = msg.subject as string;
+      }
+    }
+  } else if (msg.type === 'beadsPollRequested') {
     const agentId = msg.agentId as number;
-    const taskId = msg.taskId as string;
-    const todos = agentTodos.get(agentId);
-    if (todos?.has(taskId)) {
-      const todo = todos.get(taskId)!;
-      todo.status = msg.status as string;
-      if (msg.subject) todo.subject = msg.subject as string;
+    const agent = agents.get(agentId);
+    if (agent?.hasBeads && agent.projectPath) {
+      const prevTodos = agentTodos.get(agentId);
+      const issues = pollBeads(agent.projectPath);
+
+      // Detect newly closed issues (for whiteboard animation)
+      if (prevTodos) {
+        for (const issue of issues) {
+          const prev = prevTodos.get(issue.taskId);
+          if (prev && prev.status !== 'completed' && issue.status === 'completed') {
+            broadcast({ type: 'todoCompleted', agentId, taskId: issue.taskId });
+          }
+        }
+      }
+
+      // Update todo cache
+      const todoMap = new Map<string, { subject: string; status: string }>();
+      for (const issue of issues) {
+        todoMap.set(issue.taskId, { subject: issue.subject, status: issue.status });
+      }
+      agentTodos.set(agentId, todoMap);
+
+      // Broadcast full todo list for this agent
+      broadcast({
+        type: 'todosLoaded',
+        todos: { [agentId]: issues },
+      });
     }
   }
 }
@@ -426,6 +462,12 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     characterId = ((hash % 6) + 6) % 6;
   }
 
+  // Check if project has a .beads/ directory
+  const resolvedProjectPath = termInfo?.cwd ?? projectPath;
+  const hasBeads = resolvedProjectPath
+    ? existsSync(path.join(resolvedProjectPath, '.beads'))
+    : false;
+
   const agent: AgentState = {
     id,
     projectDir,
@@ -442,12 +484,13 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     permissionSent: false,
     hadToolsInTurn: false,
     folderName: projectName,
-    projectPath: termInfo?.cwd ?? projectPath,
+    projectPath: resolvedProjectPath,
     terminalApp: termInfo?.terminalApp,
     claudePid: termInfo?.claudePid,
     shellPid: termInfo?.shellPid ?? null,
     tty: termInfo?.tty ?? null,
     characterId,
+    hasBeads,
   };
 
   // Skip to near end of file - only read recent activity
@@ -460,6 +503,9 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
   }
 
   agents.set(id, agent);
+  if (hasBeads) {
+    console.log(`[Agent ${id}] BEADS detected in ${resolvedProjectPath}`);
+  }
   console.log(`[Agent ${id}] Adopted session in ${projectName}: ${path.basename(filePath)}`);
   broadcast({
     type: 'agentCreated',
@@ -477,6 +523,18 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
 
   startFileWatching(id, filePath);
   readNewLines(id);
+
+  // Initial BEADS poll
+  if (agent.hasBeads && agent.projectPath) {
+    const issues = pollBeads(agent.projectPath);
+    if (issues.length > 0) {
+      const todoMap = new Map<string, { subject: string; status: string }>();
+      for (const issue of issues) {
+        todoMap.set(issue.taskId, { subject: issue.subject, status: issue.status });
+      }
+      agentTodos.set(id, todoMap);
+    }
+  }
 }
 
 function scanProjectDir(projectDir: string): void {

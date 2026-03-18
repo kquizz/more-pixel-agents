@@ -270,6 +270,10 @@ export function processTranscriptLine(
           }
           if (agent.activeToolIds.size === 0) {
             agent.hadToolsInTurn = false;
+            // Trigger BEADS poll after all tools in a turn complete
+            if (agent.hasBeads) {
+              broadcast({ type: 'beadsPollRequested', agentId });
+            }
           }
         } else {
           cancelWaitingTimer(agentId, waitingTimers);
@@ -298,6 +302,10 @@ export function processTranscriptLine(
       agent.permissionSent = false;
       agent.hadToolsInTurn = false;
       broadcast({ type: 'agentStatus', id: agentId, status: 'waiting' });
+      // Trigger BEADS poll at end of turn
+      if (agent.hasBeads) {
+        broadcast({ type: 'beadsPollRequested', agentId });
+      }
     }
   } catch {
     // Ignore malformed lines

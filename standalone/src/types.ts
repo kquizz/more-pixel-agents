@@ -20,6 +20,7 @@ export interface AgentState {
   projectPath?: string;
   tty?: string | null;
   characterId?: number; // 0-5 from config, or undefined for auto-assigned
+  hasBeads?: boolean;
 }
 
 export interface TodoItem {
