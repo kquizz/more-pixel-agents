@@ -30,6 +30,7 @@ import type { AgentState } from './types.js';
 // -- State --
 
 const agents = new Map<number, AgentState>();
+const agentTodos = new Map<number, Map<string, { subject: string; status: string }>>();
 const fileWatchers = new Map<number, fs.FSWatcher>();
 const pollingTimers = new Map<number, ReturnType<typeof setInterval>>();
 const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -195,7 +196,29 @@ function updateTerminalInfo(): void {
 
 // -- Helpers --
 
+function handleTodoBroadcast(msg: Record<string, unknown>): void {
+  if (msg.type === 'todoCreated') {
+    const agentId = msg.agentId as number;
+    const taskId = msg.taskId as string;
+    if (!agentTodos.has(agentId)) agentTodos.set(agentId, new Map());
+    agentTodos.get(agentId)!.set(taskId, {
+      subject: msg.subject as string,
+      status: 'pending',
+    });
+  } else if (msg.type === 'todoUpdated') {
+    const agentId = msg.agentId as number;
+    const taskId = msg.taskId as string;
+    const todos = agentTodos.get(agentId);
+    if (todos?.has(taskId)) {
+      const todo = todos.get(taskId)!;
+      todo.status = msg.status as string;
+      if (msg.subject) todo.subject = msg.subject as string;
+    }
+  }
+}
+
 function broadcast(msg: Record<string, unknown>): void {
+  handleTodoBroadcast(msg);
   const json = JSON.stringify(msg);
   for (const ws of clients) {
     if (ws.readyState === 1) {
@@ -534,6 +557,17 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
     projectPaths,
     characterIds,
   });
+
+  // Send existing todos for all agents
+  const allTodos: Record<number, Array<{ taskId: string; subject: string; status: string }>> = {};
+  for (const [agentId, todos] of agentTodos) {
+    allTodos[agentId] = Array.from(todos.entries()).map(([taskId, t]) => ({
+      taskId,
+      subject: t.subject,
+      status: t.status,
+    }));
+  }
+  send({ type: 'todosLoaded', todos: allTodos });
 
   // Send layout LAST - this triggers the webview to flush pendingAgents into OfficeState
   const savedLayout = readLayoutFromFile();

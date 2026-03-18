@@ -195,6 +195,32 @@ export function processTranscriptLine(
             }
             broadcast({ type: 'agentToolStart', id: agentId, toolId: block.id, status });
 
+            // Detect TaskCreate / TaskUpdate for todo tracking
+            if (toolName === 'TaskCreate') {
+              const subject = (block.input?.subject as string) || '';
+              broadcast({
+                type: 'todoCreated',
+                agentId,
+                taskId: block.id,
+                subject,
+                status: 'pending',
+              });
+            } else if (toolName === 'TaskUpdate') {
+              const taskId = (block.input?.taskId as string) || '';
+              const taskStatus = (block.input?.status as string) || '';
+              const subject = block.input?.subject as string | undefined;
+              broadcast({
+                type: 'todoUpdated',
+                agentId,
+                taskId,
+                status: taskStatus,
+                ...(subject ? { subject } : {}),
+              });
+              if (taskStatus === 'completed') {
+                broadcast({ type: 'todoCompleted', agentId, taskId });
+              }
+            }
+
             // Broadcast sub-agent lifecycle event for Agent/Task tools
             if (toolName === 'Agent' || toolName === 'Task') {
               // Cap at 4 active sub-agents per parent
