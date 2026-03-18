@@ -152,13 +152,18 @@ function updateTerminalInfo(): void {
         agent.terminalApp = undefined;
         agent.shellPid = null;
         agent.tty = null;
-        // Notify webview that this agent lost its terminal
+        // Notify webview that this agent lost its terminal and is now idle
         if (hadTerminal) {
           broadcast({
             type: 'agentTerminalUpdate',
             id: agent.id,
             terminalApp: null,
             projectPath: agent.projectPath,
+          });
+          broadcast({
+            type: 'agentStatus',
+            id: agent.id,
+            status: 'idle',
           });
         }
         continue;
