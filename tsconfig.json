@@ -18,6 +18,7 @@
 		"webview-ui",
 		"dist",
 		"out",
-		"scripts"
+		"scripts",
+		"standalone"
 	]
 }
