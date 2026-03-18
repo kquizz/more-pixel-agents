@@ -236,10 +236,13 @@ export function useExtensionMessages(
         if (status.startsWith('Subtask:')) {
           const label = status.slice('Subtask:'.length).trim();
           const subId = os.addSubagent(id, toolId);
-          setSubagentCharacters((prev) => {
-            if (prev.some((s) => s.id === subId)) return prev;
-            return [...prev, { id: subId, parentAgentId: id, parentToolId: toolId, label }];
-          });
+          // subId === 0 means the per-parent cap was reached
+          if (subId !== 0) {
+            setSubagentCharacters((prev) => {
+              if (prev.some((s) => s.id === subId)) return prev;
+              return [...prev, { id: subId, parentAgentId: id, parentToolId: toolId, label }];
+            });
+          }
         }
       } else if (msg.type === 'agentToolDone') {
         const id = msg.id as number;

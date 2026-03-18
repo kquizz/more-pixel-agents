@@ -1,7 +1,6 @@
 import {
   BUBBLE_FADE_DURATION_SEC,
   BUBBLE_SITTING_OFFSET_PX,
-  BUBBLE_VERTICAL_OFFSET_PX,
   BUTTON_ICON_SIZE_FACTOR,
   BUTTON_LINE_WIDTH_MIN,
   BUTTON_LINE_WIDTH_ZOOM_FACTOR,
@@ -28,6 +27,7 @@ import {
   SELECTED_OUTLINE_ALPHA,
   SELECTION_DASH_PATTERN,
   SELECTION_HIGHLIGHT_COLOR,
+  SUBAGENT_SCALE,
   VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
@@ -146,7 +146,9 @@ export function renderScene(
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
     const spriteData = getCharacterSprite(ch, sprites);
-    const cached = getCachedSprite(spriteData, zoom);
+    // Sub-agents render at reduced scale
+    const charZoom = ch.isSubagent ? zoom * SUBAGENT_SCALE : zoom;
+    const cached = getCachedSprite(spriteData, charZoom);
     // Sitting offset: shift character down when seated so they visually sit in the chair
     const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
     // Anchor at bottom-center of character — round to integer device pixels
@@ -164,10 +166,11 @@ export function renderScene(
       const mDrawY = drawY;
       const mSpriteData = spriteData;
       const mCh = ch;
+      const mCharZoom = charZoom;
       drawables.push({
         zY: charZY,
         draw: (c) => {
-          renderMatrixEffect(c, mCh, mSpriteData, mDrawX, mDrawY, zoom);
+          renderMatrixEffect(c, mCh, mSpriteData, mDrawX, mDrawY, mCharZoom);
         },
       });
       continue;
@@ -179,9 +182,9 @@ export function renderScene(
     if (isSelected || isHovered) {
       const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
       const outlineData = getOutlineSprite(spriteData);
-      const outlineCached = getCachedSprite(outlineData, zoom);
-      const olDrawX = drawX - zoom; // 1 sprite-pixel offset, scaled
-      const olDrawY = drawY - zoom; // outline follows sitting offset via drawY
+      const outlineCached = getCachedSprite(outlineData, charZoom);
+      const olDrawX = drawX - charZoom; // 1 sprite-pixel offset, scaled
+      const olDrawY = drawY - charZoom; // outline follows sitting offset via drawY
       drawables.push({
         zY: charZY - OUTLINE_Z_SORT_OFFSET, // sort just before character
         draw: (c) => {
@@ -498,14 +501,16 @@ export function renderBubbles(
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC;
     }
 
-    const cached = getCachedSprite(sprite, zoom);
+    const bubbleZoom = ch.isSubagent ? zoom * SUBAGENT_SCALE : zoom;
+    const cached = getCachedSprite(sprite, bubbleZoom);
     // Position: centered above the character's head
     // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
     // Place bubble above head with a small gap; follow sitting offset
     const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
+    const charSpriteHeight = ch.isSubagent ? 24 * zoom * SUBAGENT_SCALE : 24 * zoom;
     const bubbleX = Math.round(offsetX + ch.x * zoom - cached.width / 2);
     const bubbleY = Math.round(
-      offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - cached.height - 1 * zoom,
+      offsetY + (ch.y + sittingOff) * zoom - charSpriteHeight - cached.height - 1 * bubbleZoom,
     );
 
     ctx.save();
@@ -537,6 +542,8 @@ export function renderCharacterLabels(
   ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
 
   for (const ch of characters) {
+    // Sub-agents don't get their own label (parent's label is sufficient)
+    if (ch.isSubagent) continue;
     const label = ch.projectPath ? lastPathSegment(ch.projectPath) : ch.folderName;
     if (!label || ch.matrixEffect) continue;
 

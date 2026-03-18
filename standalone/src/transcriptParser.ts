@@ -194,6 +194,19 @@ export function processTranscriptLine(
               hasNonExemptTool = true;
             }
             broadcast({ type: 'agentToolStart', id: agentId, toolId: block.id, status });
+
+            // Broadcast sub-agent lifecycle event for Agent/Task tools
+            if (toolName === 'Agent' || toolName === 'Task') {
+              // Cap at 4 active sub-agents per parent
+              const currentSubagentCount = agent.activeSubagentToolIds.size;
+              if (currentSubagentCount <= 4) {
+                broadcast({
+                  type: 'subAgentStarted',
+                  id: agentId,
+                  subAgentId: block.id,
+                });
+              }
+            }
           }
         }
         if (hasNonExemptTool) {
@@ -217,6 +230,7 @@ export function processTranscriptLine(
               if (completedToolName === 'Task' || completedToolName === 'Agent') {
                 agent.activeSubagentToolIds.delete(completedToolId);
                 agent.activeSubagentToolNames.delete(completedToolId);
+                broadcast({ type: 'subAgentCompleted', id: agentId, subAgentId: completedToolId });
                 broadcast({ type: 'subagentClear', id: agentId, parentToolId: completedToolId });
               }
               agent.activeToolIds.delete(completedToolId);

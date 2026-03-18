@@ -10,7 +10,9 @@ import {
   HUE_SHIFT_RANGE_DEG,
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
+  MAX_SUBAGENTS_PER_PARENT,
   PALETTE_COUNT,
+  SUBAGENT_SCALE,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -380,10 +382,31 @@ export class OfficeState {
     return true;
   }
 
-  /** Create a sub-agent character with the parent's palette. Returns the sub-agent ID. */
+  /** Count active (non-despawning) sub-agents for a given parent */
+  private countActiveSubagents(parentAgentId: number): number {
+    let count = 0;
+    for (const [, meta] of this.subagentMeta) {
+      if (meta.parentAgentId === parentAgentId) {
+        const subId = this.subagentIdMap.get(`${meta.parentAgentId}:${meta.parentToolId}`);
+        if (subId !== undefined) {
+          const ch = this.characters.get(subId);
+          if (ch && ch.matrixEffect !== 'despawn') count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  /** Create a sub-agent character with the parent's palette. Returns the sub-agent ID.
+   *  Returns -0 (as a sentinel) if the cap of MAX_SUBAGENTS_PER_PARENT is reached. */
   addSubagent(parentAgentId: number, parentToolId: string): number {
     const key = `${parentAgentId}:${parentToolId}`;
     if (this.subagentIdMap.has(key)) return this.subagentIdMap.get(key)!;
+
+    // Cap at MAX_SUBAGENTS_PER_PARENT visible sub-agents per parent
+    if (this.countActiveSubagents(parentAgentId) >= MAX_SUBAGENTS_PER_PARENT) {
+      return 0; // sentinel: sub-agent was not created
+    }
 
     const id = this.nextSubagentId--;
     const parentCh = this.characters.get(parentAgentId);
@@ -703,11 +726,13 @@ export class OfficeState {
       if (ch.matrixEffect === 'despawn') continue;
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
+      // Sub-agents are rendered at reduced scale, so shrink hit box accordingly
+      const scale = ch.isSubagent ? SUBAGENT_SCALE : 1;
       const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
       const anchorY = ch.y + sittingOffset;
-      const left = ch.x - CHARACTER_HIT_HALF_WIDTH;
-      const right = ch.x + CHARACTER_HIT_HALF_WIDTH;
-      const top = anchorY - CHARACTER_HIT_HEIGHT;
+      const left = ch.x - CHARACTER_HIT_HALF_WIDTH * scale;
+      const right = ch.x + CHARACTER_HIT_HALF_WIDTH * scale;
+      const top = anchorY - CHARACTER_HIT_HEIGHT * scale;
       const bottom = anchorY;
       if (worldX >= left && worldX <= right && worldY >= top && worldY <= bottom) {
         return ch.id;

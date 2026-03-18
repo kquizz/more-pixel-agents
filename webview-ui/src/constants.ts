@@ -112,5 +112,9 @@ export const AUTO_ON_FACING_DEPTH = 3;
 export const AUTO_ON_SIDE_DEPTH = 2;
 export const CHARACTER_HIT_HALF_WIDTH = 8;
 export const CHARACTER_HIT_HEIGHT = 24;
+
+// ── Sub-agent rendering ─────────────────────────────────────
+export const SUBAGENT_SCALE = 0.6;
+export const MAX_SUBAGENTS_PER_PARENT = 4;
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32;
 export const PULSE_ANIMATION_DURATION_SEC = 1.5;
