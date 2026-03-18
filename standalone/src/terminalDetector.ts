@@ -154,7 +154,9 @@ export function detectTerminals(): Map<number, TerminalInfo> {
       if (
         !lowerLine.includes('/claude') &&
         !lowerLine.includes('claude-cli') &&
-        !lowerLine.includes(' claude ')
+        !lowerLine.includes(' claude ') &&
+        !lowerLine.endsWith(' claude') &&
+        !/ claude$/.test(lowerLine)
       ) {
         continue;
       }

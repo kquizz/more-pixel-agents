@@ -530,30 +530,43 @@ export function renderCharacterLabels(
   offsetY: number,
   zoom: number,
 ): void {
+  // First pass: compute label positions
+  const labels: Array<{ label: string; x: number; y: number; width: number; height: number }> = [];
+  const fontSize = Math.max(7, Math.round(8 * zoom));
+  ctx.save();
+  ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
+
   for (const ch of characters) {
-    // Only show label if character has a folderName or projectPath
     const label = ch.projectPath ? lastPathSegment(ch.projectPath) : ch.folderName;
-    if (!label) continue;
+    if (!label || ch.matrixEffect) continue;
 
-    // Skip characters in matrix effect (spawning/despawning)
-    if (ch.matrixEffect) continue;
-
-    // Font size scales with zoom but has a minimum for readability
-    const fontSize = Math.max(7, Math.round(8 * zoom));
-
-    // Position: centered below the character sprite
-    // Character is anchored bottom-center at (ch.x, ch.y)
-    // Add a small gap below the character feet
     const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
     const labelX = Math.round(offsetX + ch.x * zoom);
-    const labelY = Math.round(offsetY + (ch.y + sittingOffset) * zoom + 2 * zoom);
+    let labelY = Math.round(offsetY + (ch.y + sittingOffset) * zoom + 2 * zoom);
+    const metrics = ctx.measureText(label);
+    const labelW = metrics.width;
+    const labelH = fontSize + 2;
 
+    // Nudge down if overlapping with an existing label
+    for (const prev of labels) {
+      const overlapX = Math.abs(labelX - prev.x) < (labelW + prev.width) / 2;
+      const overlapY = Math.abs(labelY - prev.y) < labelH;
+      if (overlapX && overlapY) {
+        labelY = prev.y + labelH;
+      }
+    }
+
+    labels.push({ label, x: labelX, y: labelY, width: labelW, height: labelH });
+  }
+  ctx.restore();
+
+  // Second pass: render
+  for (const { label, x, y } of labels) {
     ctx.save();
     ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
-    // Dark outline/shadow for readability (draw text 4x offset in dark color)
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     for (const [dx, dy] of [
       [-1, 0],
@@ -561,13 +574,11 @@ export function renderCharacterLabels(
       [0, -1],
       [0, 1],
     ]) {
-      ctx.fillText(label, labelX + dx, labelY + dy);
+      ctx.fillText(label, x + dx, y + dy);
     }
 
-    // White text on top
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, labelX, labelY);
-
+    ctx.fillText(label, x, y);
     ctx.restore();
   }
 }
