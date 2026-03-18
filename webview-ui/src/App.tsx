@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { DebugView } from './components/DebugView.js';
+import { KanbanOverlay } from './components/KanbanOverlay.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { PULSE_ANIMATION_DURATION_SEC } from './constants.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
@@ -157,6 +158,7 @@ function App() {
 
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
+  const [showKanban, setShowKanban] = useState(false);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
   const handleToggleAlwaysShowOverlay = useCallback(
@@ -267,6 +269,7 @@ function App() {
         onZoomChange={editor.handleZoomChange}
         panRef={editor.panRef}
         todos={todos}
+        onWhiteboardClick={() => setShowKanban(true)}
       />
 
       {!isDebugMode && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
@@ -374,6 +377,8 @@ function App() {
           onSelectAgent={handleSelectAgent}
         />
       )}
+
+      {showKanban && <KanbanOverlay todos={todos} onClose={() => setShowKanban(false)} />}
 
       {showMigrationNotice && (
         <div

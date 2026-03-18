@@ -51,6 +51,7 @@ interface OfficeCanvasProps {
   onZoomChange: (zoom: number) => void;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   todos?: Array<{ status: string }>;
+  onWhiteboardClick?: () => void;
 }
 
 export function OfficeCanvas({
@@ -70,6 +71,7 @@ export function OfficeCanvas({
   onZoomChange,
   panRef,
   todos,
+  onWhiteboardClick,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -741,6 +743,12 @@ export function OfficeCanvas({
         return;
       }
 
+      // Check whiteboard click
+      if (officeState.isWhiteboardAt(pos.worldX, pos.worldY)) {
+        onWhiteboardClick?.();
+        return;
+      }
+
       // No agent hit — check seat click while agent is selected
       if (officeState.selectedAgentId !== null) {
         const selectedCh = officeState.characters.get(officeState.selectedAgentId);
@@ -781,7 +789,7 @@ export function OfficeCanvas({
         officeState.cameraFollowId = null;
       }
     },
-    [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+    [officeState, onClick, screenToWorld, screenToTile, isEditMode, onWhiteboardClick],
   );
 
   const handleMouseLeave = useCallback(() => {
