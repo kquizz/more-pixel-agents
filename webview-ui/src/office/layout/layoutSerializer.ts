@@ -163,7 +163,7 @@ function orientationToFacing(orientation: string): Direction {
 export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   const seats = new Map<string, Seat>();
 
-  // Build set of all desk tiles
+  // Build set of all desk tiles (used for facing direction)
   const deskTiles = new Set<string>();
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type);
@@ -171,6 +171,18 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     for (let dr = 0; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {
         deskTiles.add(`${item.col + dc},${item.row + dr}`);
+      }
+    }
+  }
+
+  // Build set of PC/electronics tiles — a seat near a PC is a workstation
+  const pcTiles = new Set<string>();
+  for (const item of furniture) {
+    const entry = getCatalogEntry(item.type);
+    if (!entry || entry.category !== 'electronics') continue;
+    for (let dr = 0; dr < entry.footprintH; dr++) {
+      for (let dc = 0; dc < entry.footprintW; dc++) {
+        pcTiles.add(`${item.col + dc},${item.row + dr}`);
       }
     }
   }
@@ -201,16 +213,26 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
         let facingDir: Direction = Direction.DOWN;
         let facesDesk = false;
 
-        // Check all 4 adjacent tiles for desks
+        // Check adjacent tiles for desks (for facing direction)
         for (const d of dirs) {
           if (deskTiles.has(`${tileCol + d.dc},${tileRow + d.dr}`)) {
-            facesDesk = true;
-            // If no explicit orientation, face toward the desk
             if (!entry.orientation) {
               facingDir = d.facing;
             }
             break;
           }
+        }
+
+        // A seat is a "workstation" if there's a PC within 3 tiles in any direction
+        // (PC sits on desk, desk is adjacent to chair = 2 tiles away)
+        for (let dy = -3; dy <= 3; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            if (pcTiles.has(`${tileCol + dx},${tileRow + dy}`)) {
+              facesDesk = true;
+              break;
+            }
+          }
+          if (facesDesk) break;
         }
 
         // Apply chair orientation if specified
