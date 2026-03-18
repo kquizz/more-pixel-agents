@@ -555,9 +555,9 @@ export function renderCharacterLabels(
     height: number;
     dotColor: string;
   }> = [];
-  const fontSize = Math.max(7, Math.round(8 * zoom));
+  const fontSize = Math.max(5, Math.round(6 * zoom));
   ctx.save();
-  ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
+  ctx.font = `${fontSize}px "Courier New", Courier, monospace`;
 
   for (const ch of characters) {
     // Sub-agents don't get their own label (parent's label is sufficient)
@@ -602,37 +602,29 @@ export function renderCharacterLabels(
   // Second pass: render
   for (const { label, x, y, dotColor } of labels) {
     ctx.save();
-    ctx.font = `bold ${fontSize}px "Courier New", Courier, monospace`;
+    ctx.font = `${fontSize}px "Courier New", Courier, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
+    ctx.globalAlpha = 0.7;
 
-    // Draw text outline (dark background)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    for (const [dx, dy] of [
-      [-1, 0],
-      [1, 0],
-      [0, -1],
-      [0, 1],
-    ]) {
-      ctx.fillText(label, x + dx, y + dy);
-    }
+    // Thin dark shadow for readability
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillText(label, x + 1, y + 1);
 
     // Draw the dot in color, then the rest in white
-    // Since we prepended the dot, measure it to split rendering
     const dotStr = label.substring(0, 2); // "● "
     const textStr = label.substring(2);
     const dotWidth = ctx.measureText(dotStr).width;
     const fullWidth = ctx.measureText(label).width;
-    // textAlign is center, so the label starts at x - fullWidth/2
     const startX = x - fullWidth / 2;
 
-    // Draw dot in its status color
     ctx.textAlign = 'left';
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle = dotColor;
     ctx.fillText(dotStr, startX, y);
 
-    // Draw remaining text in white
-    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#e0e0e0';
     ctx.fillText(textStr, startX + dotWidth, y);
 
     ctx.restore();
