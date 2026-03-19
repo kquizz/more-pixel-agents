@@ -12,7 +12,7 @@ import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
 import { setCharacterTemplates } from '../office/sprites/spriteData.js';
 import { extractToolName } from '../office/toolUtils.js';
-import type { OfficeLayout, TodoItem, ToolActivity } from '../office/types.js';
+import type { OfficeLayout, PrStatus, TodoItem, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { vscode } from '../vscodeApi.js';
 
@@ -542,6 +542,12 @@ export function useExtensionMessages(
               : t,
           ),
         );
+      } else if (msg.type === 'prList') {
+        os.updatePrList(msg.prs as PrStatus[]);
+      } else if (msg.type === 'prStatusUpdate') {
+        os.updatePrStatus(msg.pr as PrStatus, msg.agentId as number);
+      } else if (msg.type === 'agentBranchChange') {
+        os.setAgentBranch(msg.agentId as number, msg.branch as string);
       } else if (msg.type === 'todoCompleted') {
         const agentId = msg.agentId as number;
         // Try handoff visit to another agent first, fall back to whiteboard

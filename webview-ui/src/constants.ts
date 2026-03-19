@@ -7,6 +7,13 @@ export const DEFAULT_ROWS = 11;
 export const MAX_COLS = 64;
 export const MAX_ROWS = 64;
 
+// ── Branch Rooms ────────────────────────────────────────────
+export const BRANCH_ROOM_WIDTH = 6;
+export const BRANCH_ROOM_HEIGHT = 8;
+export const BRANCH_ROOM_MAX_COLS = 3;
+/** Branches that stay in the main room (no separate branch room) */
+export const BRANCH_ROOM_SKIP = ['main', 'master'];
+
 // ── Character Animation ─────────────────────────────────────
 export const WALK_SPEED_PX_PER_SEC = 48;
 export const WALK_FRAME_DURATION_SEC = 0.15;

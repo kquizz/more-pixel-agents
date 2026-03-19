@@ -165,6 +165,31 @@ export interface OfficeLayout {
   layoutRevision?: number;
 }
 
+export interface PrStatus {
+  number: number;
+  title: string;
+  branch: string;
+  state: 'OPEN' | 'CLOSED' | 'MERGED';
+  ciStatus: 'pending' | 'pass' | 'fail' | 'none';
+  reviewStatus: 'pending' | 'approved' | 'changes_requested' | 'none';
+  mergeable: boolean;
+}
+
+export interface BranchRoom {
+  branch: string;
+  /** Which column in the room grid (0 = main room) */
+  gridCol: number;
+  gridRow: number;
+  /** Tile offset in the layout */
+  roomCol: number;
+  roomRow: number;
+  /** Room size in tiles */
+  width: number;
+  height: number;
+  pr?: PrStatus;
+  agentIds: number[];
+}
+
 export interface Character {
   id: number;
   state: CharacterState;

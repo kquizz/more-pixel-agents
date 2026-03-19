@@ -262,17 +262,17 @@ export function renderScene(
       },
     });
 
-    // Laptop sprite for sub-agents — on their lap when seated, at feet otherwise
+    // Laptop sprite for sub-agents — on their lap when seated
     if (ch.hasLaptop) {
       const laptopCached = getCachedSprite(LAPTOP_SPRITE, charZoom);
       const laptopX = Math.round(offsetX + ch.x * zoom - laptopCached.width / 2);
-      // When seated (TYPE state), position on lap area (14px above character bottom)
-      const lapOffset = ch.state === CharacterState.TYPE ? Math.round(-charZoom * 14) : 0;
+      // Position at the character's midsection (8px above bottom)
+      const lapOffset = ch.state === CharacterState.TYPE ? Math.round(-charZoom * 8) : 0;
       const laptopY = Math.round(
         offsetY + (ch.y + sittingOffset) * zoom - laptopCached.height + lapOffset,
       );
       drawables.push({
-        zY: charZY + OUTLINE_Z_SORT_OFFSET, // in front of character (on lap)
+        zY: charZY + 0.5, // render well in front of character
         draw: (c) => {
           c.drawImage(laptopCached, laptopX, laptopY);
         },

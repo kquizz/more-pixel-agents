@@ -9,6 +9,8 @@ import type { WebSocket } from 'ws';
 
 import { loadAllAssets } from './assetLoader.js';
 import { findAllBeadsRoots, pollAllBeads } from './beadsPoller.js';
+import { getCurrentBranch, pollGitHubPRs } from './githubPoller.js';
+import type { PrStatus } from './githubPoller.js';
 import { getConfig, loadConfig, resolveCharacterId, watchConfig } from './config.js';
 import {
   DEFAULT_PORT,
@@ -42,6 +44,12 @@ const knownJsonlFiles = new Set<string>();
 const knownProjectDirs = new Set<string>();
 let nextAgentId = 1;
 const clients = new Set<WebSocket>();
+
+// -- GitHub PR polling state --
+
+const prCache = new Map<string, PrStatus[]>(); // projectPath → last known PRs
+const agentBranches = new Map<number, string>(); // agentId → current branch
+const PR_POLL_INTERVAL_MS = 30_000;
 
 // -- Terminal detection cache --
 
@@ -690,6 +698,26 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
   }
   send({ type: 'todosLoaded', todos: allTodos });
 
+  // Send current PR list
+  const allPrs: PrStatus[] = [];
+  const seenPrNumbers = new Set<number>();
+  for (const prs of prCache.values()) {
+    for (const pr of prs) {
+      if (!seenPrNumbers.has(pr.number)) {
+        seenPrNumbers.add(pr.number);
+        allPrs.push(pr);
+      }
+    }
+  }
+  if (allPrs.length > 0) {
+    send({ type: 'prList', prs: allPrs });
+  }
+
+  // Send current agent branches
+  for (const [agentId, branch] of agentBranches) {
+    send({ type: 'agentBranchChange', agentId, branch });
+  }
+
   // Send layout LAST - this triggers the webview to flush pendingAgents into OfficeState
   const savedLayout = readLayoutFromFile();
   const layout = savedLayout ?? assets.defaultLayout;
@@ -721,6 +749,63 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
     if (agent.isWaiting) {
       send({ type: 'agentStatus', id: agentId, status: 'waiting' });
     }
+  }
+}
+
+// -- GitHub PR polling --
+
+function pollGitHubPRsForAllAgents(): void {
+  const polledPaths = new Set<string>();
+
+  for (const [agentId, agent] of agents) {
+    if (!agent.projectPath) continue;
+
+    // Poll PRs once per unique project path
+    if (!polledPaths.has(agent.projectPath)) {
+      polledPaths.add(agent.projectPath);
+      const newPrs = pollGitHubPRs(agent.projectPath);
+      const oldPrs = prCache.get(agent.projectPath) || [];
+
+      // Detect changes and broadcast events
+      for (const pr of newPrs) {
+        const old = oldPrs.find((o) => o.number === pr.number);
+        if (
+          !old ||
+          old.ciStatus !== pr.ciStatus ||
+          old.state !== pr.state ||
+          old.reviewStatus !== pr.reviewStatus
+        ) {
+          broadcast({ type: 'prStatusUpdate', pr, agentId });
+        }
+      }
+
+      prCache.set(agent.projectPath, newPrs);
+    }
+
+    // Poll current branch for each agent
+    const branch = getCurrentBranch(agent.projectPath);
+    if (branch) {
+      const prevBranch = agentBranches.get(agentId);
+      if (prevBranch !== branch) {
+        agentBranches.set(agentId, branch);
+        broadcast({ type: 'agentBranchChange', agentId, branch });
+      }
+    }
+  }
+
+  // Broadcast full deduplicated PR list for room generation
+  const allPrs: PrStatus[] = [];
+  const seenPrNumbers = new Set<number>();
+  for (const prs of prCache.values()) {
+    for (const pr of prs) {
+      if (!seenPrNumbers.has(pr.number)) {
+        seenPrNumbers.add(pr.number);
+        allPrs.push(pr);
+      }
+    }
+  }
+  if (allPrs.length > 0) {
+    broadcast({ type: 'prList', prs: allPrs });
   }
 }
 
@@ -850,6 +935,10 @@ function main(): void {
   // Start terminal detection
   updateTerminalInfo();
   setInterval(updateTerminalInfo, TERMINAL_DETECT_INTERVAL_MS);
+
+  // Start GitHub PR polling
+  pollGitHubPRsForAllAgents();
+  setInterval(pollGitHubPRsForAllAgents, PR_POLL_INTERVAL_MS);
 
   // Watch config for changes — reassign characters and broadcast updates
   watchConfig(() => {
