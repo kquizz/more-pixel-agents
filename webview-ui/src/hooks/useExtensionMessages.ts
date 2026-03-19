@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { playDoneSound, setSoundEnabled } from '../notificationSound.js';
+import {
+  playDoneSound,
+  playIdleSound,
+  playTaskCompleteSound,
+  setSoundEnabled,
+} from '../notificationSound.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
@@ -128,7 +133,7 @@ export function useExtensionMessages(
         }
         // Add buffered agents now that layout (and seats) are correct
         for (const p of pendingAgents) {
-          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName);
+          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.projectPath);
           // Store terminal info on the character for tooltip display
           const ch = os.characters.get(p.id);
           if (ch) {
@@ -154,7 +159,7 @@ export function useExtensionMessages(
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]));
         setSelectedAgent(id);
         // If a characterId is provided from config, use it as the palette
-        os.addAgent(id, characterId, undefined, undefined, undefined, folderName);
+        os.addAgent(id, characterId, undefined, undefined, undefined, folderName, projectPath);
         // Store terminal info on the character for tooltip display
         const ch = os.characters.get(id);
         if (ch) {
@@ -234,6 +239,11 @@ export function useExtensionMessages(
         os.setAgentTool(id, toolName);
         os.setAgentActive(id, true);
         os.clearPermissionBubble(id);
+        // Update agent project if tool provides a project hint
+        const projectHint = msg.projectHint as string | undefined;
+        if (projectHint) {
+          os.updateAgentProject(id, projectHint);
+        }
         // Create sub-agent character for Task tool subtasks
         if (status.startsWith('Subtask:')) {
           const label = status.slice('Subtask:'.length).trim();
@@ -295,6 +305,7 @@ export function useExtensionMessages(
         if (status === 'waiting') {
           os.showWaitingBubble(id);
           playDoneSound();
+          playIdleSound();
         }
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
@@ -399,7 +410,23 @@ export function useExtensionMessages(
           ch.terminalApp = (msg.terminalApp as string) || undefined;
           if (msg.projectPath) ch.projectPath = msg.projectPath as string;
         }
+      } else if (msg.type === 'projectSwitch') {
+        const id = msg.id as number;
+        const newPath = msg.projectPath as string;
+        const ch = os.characters.get(id);
+        if (ch) {
+          ch.projectPath = newPath;
+          ch.folderName = newPath.split('/').pop() || ch.folderName;
+          // Check if there's a labeled desk matching the new project
+          const newSeatId = os.findProjectSeat(newPath);
+          if (newSeatId && newSeatId !== ch.seatId) {
+            os.reassignSeat(id, newSeatId);
+            saveAgentSeats(os);
+          }
+        }
       } else if (msg.type === 'agentCharacterUpdate') {
+        // Handles explicit config-based character overrides only (not folder-based hashing).
+        // Without a config override, agents get diverse palettes via pickDiversePalette().
         const id = msg.id as number;
         const characterId = msg.characterId as number;
         const ch = os.characters.get(id);
@@ -449,13 +476,36 @@ export function useExtensionMessages(
             taskId: string;
             subject: string;
             status: 'pending' | 'in_progress' | 'completed';
+            description?: string;
+            priority?: number;
+            issueType?: string;
+            assignee?: string;
+            closeReason?: string;
+            createdAt?: string;
+            closedAt?: string;
+            dependencyCount?: number;
+            dependentCount?: number;
           }>
         >;
         const flat: TodoItem[] = [];
         for (const [agentIdStr, items] of Object.entries(todosRecord)) {
           const agentId = Number(agentIdStr);
           for (const item of items) {
-            flat.push({ taskId: item.taskId, subject: item.subject, status: item.status, agentId });
+            flat.push({
+              taskId: item.taskId,
+              subject: item.subject,
+              status: item.status,
+              agentId,
+              description: item.description,
+              priority: item.priority,
+              issueType: item.issueType,
+              assignee: item.assignee,
+              closeReason: item.closeReason,
+              createdAt: item.createdAt,
+              closedAt: item.closedAt,
+              dependencyCount: item.dependencyCount,
+              dependentCount: item.dependentCount,
+            });
           }
         }
         setTodos(flat);
@@ -481,7 +531,13 @@ export function useExtensionMessages(
         );
       } else if (msg.type === 'todoCompleted') {
         const agentId = msg.agentId as number;
-        os.triggerWhiteboardVisit(agentId);
+        // Try handoff visit to another agent first, fall back to whiteboard
+        os.triggerHandoffVisit(agentId);
+        const ch = os.characters.get(agentId);
+        if (!ch?.amenityVisit) {
+          os.triggerWhiteboardVisit(agentId);
+        }
+        playTaskCompleteSound();
       }
     };
     window.addEventListener('message', handler);

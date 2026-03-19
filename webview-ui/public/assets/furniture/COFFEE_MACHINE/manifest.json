@@ -1,0 +1,13 @@
+{
+  "id": "COFFEE_MACHINE",
+  "name": "Coffee Machine",
+  "category": "misc",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "width": 10,
+  "height": 12,
+  "footprintW": 1,
+  "footprintH": 1
+}

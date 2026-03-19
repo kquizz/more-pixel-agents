@@ -18,6 +18,23 @@ import type { AgentState } from './types.js';
 
 export const PERMISSION_EXEMPT_TOOLS = new Set(['Task', 'Agent', 'AskUserQuestion']);
 
+/** Extract project directory name from an absolute file path.
+ *  e.g., "/Users/kquillen/Code/tesla-site/src/foo.ts" → "tesla-site" */
+function extractProjectFromPath(filePath: unknown): string | null {
+  if (typeof filePath !== 'string' || !filePath.startsWith('/')) return null;
+  const segments = filePath.split('/');
+  const codeRoots = ['Code', 'Projects', 'repos', 'src', 'work', 'dev', 'games'];
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (codeRoots.includes(segments[i]) && segments[i + 1]) {
+      return segments[i + 1];
+    }
+  }
+  if (segments.length > 4 && segments[4]) {
+    return segments[4];
+  }
+  return null;
+}
+
 export function formatToolStatus(toolName: string, input: Record<string, unknown>): string {
   const base = (p: unknown) => (typeof p === 'string' ? path.basename(p) : '');
   switch (toolName) {
@@ -28,7 +45,9 @@ export function formatToolStatus(toolName: string, input: Record<string, unknown
     case 'Write':
       return `Writing ${base(input.file_path)}`;
     case 'Bash': {
-      const cmd = (input.command as string) || '';
+      let cmd = (input.command as string) || '';
+      // Strip leading "cd ... &&" prefixes for cleaner display
+      cmd = cmd.replace(/^(?:cd\s+\S+\s*&&\s*)+/, '');
       return `Running: ${cmd.length > BASH_COMMAND_DISPLAY_MAX_LENGTH ? cmd.slice(0, BASH_COMMAND_DISPLAY_MAX_LENGTH) + '\u2026' : cmd}`;
     }
     case 'Glob':
@@ -88,7 +107,9 @@ export function processTranscriptLine(
         for (const block of blocks) {
           if (block.type === 'tool_use' && block.id) {
             const toolName = block.name || '';
-            const status = formatToolStatus(toolName, block.input || {});
+            const input = block.input || {};
+            const status = formatToolStatus(toolName, input);
+            const projectHint = extractProjectFromPath(input.file_path || input.path) || null;
             console.log(`[Pixel Agents] Agent ${agentId} tool start: ${block.id} ${status}`);
             agent.activeToolIds.add(block.id);
             agent.activeToolStatuses.set(block.id, status);
@@ -101,6 +122,7 @@ export function processTranscriptLine(
               id: agentId,
               toolId: block.id,
               status,
+              ...(projectHint ? { projectHint } : {}),
             });
           }
         }
@@ -239,7 +261,9 @@ function processProgressRecord(
     for (const block of content) {
       if (block.type === 'tool_use' && block.id) {
         const toolName = block.name || '';
-        const status = formatToolStatus(toolName, block.input || {});
+        const subInput = block.input || {};
+        const status = formatToolStatus(toolName, subInput);
+        const projectHint = extractProjectFromPath(subInput.file_path || subInput.path) || null;
         console.log(
           `[Pixel Agents] Agent ${agentId} subagent tool start: ${block.id} ${status} (parent: ${parentToolId})`,
         );
@@ -270,6 +294,7 @@ function processProgressRecord(
           parentToolId,
           toolId: block.id,
           status,
+          ...(projectHint ? { projectHint } : {}),
         });
       }
     }

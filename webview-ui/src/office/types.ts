@@ -67,6 +67,8 @@ export interface Seat {
   facesDesk?: boolean;
   /** Distance to nearest PC (lower = closer to a workstation) */
   pcDistance?: number;
+  /** Project label from the adjacent desk (if any) — used for project-aware seating */
+  projectLabel?: string;
   assigned: boolean;
 }
 
@@ -94,6 +96,15 @@ export interface TodoItem {
   subject: string;
   status: 'pending' | 'in_progress' | 'completed';
   agentId: number;
+  description?: string;
+  priority?: number;
+  issueType?: string;
+  assignee?: string;
+  closeReason?: string;
+  createdAt?: string;
+  closedAt?: string;
+  dependencyCount?: number;
+  dependentCount?: number;
 }
 
 export const EditTool = {
@@ -134,6 +145,8 @@ export interface PlacedFurniture {
   row: number;
   /** Optional color override for furniture */
   color?: FloorColor;
+  /** Optional project label for desks — agents working on matching project sit here */
+  projectLabel?: string;
 }
 
 export interface OfficeLayout {
@@ -184,13 +197,30 @@ export interface Character {
   /** Assigned seat uid, or null if no seat */
   seatId: string | null;
   /** Active speech bubble type, or null if none showing */
-  bubbleType: 'permission' | 'waiting' | null;
+  bubbleType:
+    | 'permission'
+    | 'waiting'
+    | 'sleep'
+    | 'alert'
+    | 'confused'
+    | 'sweat'
+    | 'idea'
+    | 'heart'
+    | null;
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number;
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
   seatTimer: number;
+  /** Accumulated idle time (seconds) — used to trigger sleep bubble */
+  idleTimer: number;
+  /** How long permission bubble has been showing (counts up for impatience) */
+  permissionTimer: number;
+  /** How long the current active turn has lasted (for "I'm in" celebration) */
+  turnTimer: number;
   /** Whether this character represents a sub-agent (spawned by Task tool) */
   isSubagent: boolean;
+  /** Whether to render a laptop sprite at this character's seat (sub-agents only) */
+  hasLaptop: boolean;
   /** Parent agent ID if this is a sub-agent, null otherwise */
   parentAgentId: number | null;
   /** Active matrix spawn/despawn effect, or null */
@@ -205,6 +235,8 @@ export interface Character {
   terminalApp?: string;
   /** Project directory path — standalone mode only */
   projectPath?: string;
+  /** Greeting pause timer after spawn — character faces partner and waits */
+  greetingTimer?: number;
   /** Active whiteboard visit animation state */
   whiteboardVisit?: {
     phase: 'walking_to' | 'writing' | 'walking_back';
@@ -212,5 +244,20 @@ export interface Character {
     targetRow: number;
     returnSeatId: string;
     timer: number;
+  };
+  /** Active amenity visit (water cooler, coffee machine, or handoff to another agent) */
+  amenityVisit?: {
+    phase: 'walking_to' | 'using' | 'walking_back';
+    amenityType: string;
+    targetCol: number;
+    targetRow: number;
+    returnSeatId: string;
+    timer: number;
+    /** Direction to face during 'using' phase. Defaults to UP if not set. */
+    facingDir?: Direction;
+    /** Office Space easter egg: printer beatdown mode */
+    printerBeatdown?: boolean;
+    /** Whether the beatdown screen shake has fired */
+    beatdownShakeFired?: boolean;
   };
 }

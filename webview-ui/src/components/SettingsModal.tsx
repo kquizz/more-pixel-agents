@@ -1,6 +1,10 @@
 import { useState } from 'react';
 
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
+import coworkingTemplate from '../templates/template-coworking.json';
+import enterpriseTemplate from '../templates/template-enterprise.json';
+import gamingTemplate from '../templates/template-gaming.json';
+import startupTemplate from '../templates/template-startup.json';
 import { vscode } from '../vscodeApi.js';
 
 interface SettingsModalProps {
@@ -10,7 +14,31 @@ interface SettingsModalProps {
   onToggleDebugMode: () => void;
   alwaysShowOverlay: boolean;
   onToggleAlwaysShowOverlay: () => void;
+  showActiveLabels: boolean;
+  onToggleShowActiveLabels: () => void;
 }
+
+const TEMPLATES = [
+  { id: 'startup', name: 'Startup', description: '3 desks, couch, cozy', layout: startupTemplate },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    description: '6 desks, meeting room, lounge',
+    layout: enterpriseTemplate,
+  },
+  {
+    id: 'coworking',
+    name: 'Coworking',
+    description: 'Open plan, mixed seating, plants',
+    layout: coworkingTemplate,
+  },
+  {
+    id: 'gaming',
+    name: 'Gaming Studio',
+    description: 'U-shape PCs, fish tank, lounge',
+    layout: gamingTemplate,
+  },
+] as const;
 
 const menuItemBase: React.CSSProperties = {
   display: 'flex',
@@ -27,6 +55,21 @@ const menuItemBase: React.CSSProperties = {
   textAlign: 'left',
 };
 
+const templateBtnBase: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  width: '100%',
+  padding: '6px 10px',
+  fontSize: '20px',
+  color: 'rgba(255, 255, 255, 0.8)',
+  background: 'transparent',
+  border: 'none',
+  borderRadius: 0,
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
 export function SettingsModal({
   isOpen,
   onClose,
@@ -34,11 +77,26 @@ export function SettingsModal({
   onToggleDebugMode,
   alwaysShowOverlay,
   onToggleAlwaysShowOverlay,
+  showActiveLabels,
+  onToggleShowActiveLabels,
 }: SettingsModalProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
+  const [confirmTemplate, setConfirmTemplate] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const applyTemplate = (templateId: string) => {
+    const template = TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+    vscode.postMessage({
+      type: 'applyTemplateLayout',
+      layout: template.layout,
+      templateName: template.name,
+    });
+    setConfirmTemplate(null);
+    onClose();
+  };
 
   return (
     <>
@@ -69,6 +127,8 @@ export function SettingsModal({
           padding: '4px',
           boxShadow: 'var(--pixel-shadow)',
           minWidth: 200,
+          maxHeight: '80vh',
+          overflowY: 'auto',
         }}
       >
         {/* Header with title and X button */}
@@ -208,6 +268,35 @@ export function SettingsModal({
           </span>
         </button>
         <button
+          onClick={onToggleShowActiveLabels}
+          onMouseEnter={() => setHovered('activeLabels')}
+          onMouseLeave={() => setHovered(null)}
+          style={{
+            ...menuItemBase,
+            background: hovered === 'activeLabels' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+          }}
+        >
+          <span>Show Active Labels</span>
+          <span
+            style={{
+              width: 14,
+              height: 14,
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: 0,
+              background: showActiveLabels ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              lineHeight: 1,
+              color: '#fff',
+            }}
+          >
+            {showActiveLabels ? 'X' : ''}
+          </span>
+        </button>
+        <button
           onClick={onToggleDebugMode}
           onMouseEnter={() => setHovered('debug')}
           onMouseLeave={() => setHovered(null)}
@@ -229,6 +318,104 @@ export function SettingsModal({
             />
           )}
         </button>
+
+        {/* Layout Templates section */}
+        <div
+          style={{
+            borderTop: '1px solid var(--pixel-border)',
+            marginTop: '4px',
+            paddingTop: '4px',
+          }}
+        >
+          <div
+            style={{
+              padding: '4px 10px',
+              fontSize: '18px',
+              color: 'rgba(255, 255, 255, 0.5)',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+            }}
+          >
+            Layout Templates
+          </div>
+          {TEMPLATES.map((template) => (
+            <div key={template.id}>
+              {confirmTemplate === template.id ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '6px 10px',
+                    background: 'rgba(255, 180, 50, 0.1)',
+                  }}
+                >
+                  <span style={{ fontSize: '18px', color: 'rgba(255, 200, 100, 0.9)' }}>
+                    Replace current layout?
+                  </span>
+                  <span style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => applyTemplate(template.id)}
+                      onMouseEnter={() => setHovered(`confirm-${template.id}`)}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{
+                        background:
+                          hovered === `confirm-${template.id}`
+                            ? 'rgba(90, 200, 90, 0.3)'
+                            : 'rgba(90, 200, 90, 0.15)',
+                        border: '1px solid rgba(90, 200, 90, 0.5)',
+                        borderRadius: 0,
+                        color: 'rgba(90, 200, 90, 0.9)',
+                        fontSize: '18px',
+                        cursor: 'pointer',
+                        padding: '2px 8px',
+                      }}
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => setConfirmTemplate(null)}
+                      onMouseEnter={() => setHovered(`cancel-${template.id}`)}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{
+                        background:
+                          hovered === `cancel-${template.id}`
+                            ? 'rgba(255, 100, 100, 0.3)'
+                            : 'rgba(255, 100, 100, 0.15)',
+                        border: '1px solid rgba(255, 100, 100, 0.5)',
+                        borderRadius: 0,
+                        color: 'rgba(255, 100, 100, 0.9)',
+                        fontSize: '18px',
+                        cursor: 'pointer',
+                        padding: '2px 8px',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmTemplate(template.id)}
+                  onMouseEnter={() => setHovered(`template-${template.id}`)}
+                  onMouseLeave={() => setHovered(null)}
+                  style={{
+                    ...templateBtnBase,
+                    background:
+                      hovered === `template-${template.id}`
+                        ? 'rgba(255, 255, 255, 0.08)'
+                        : 'transparent',
+                  }}
+                >
+                  <span>{template.name}</span>
+                  <span style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.4)' }}>
+                    {template.description}
+                  </span>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );

@@ -13,7 +13,7 @@ import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
 import { EditorToolbar } from './office/editor/EditorToolbar.js';
 import { OfficeState } from './office/engine/officeState.js';
-import { isRotatable } from './office/layout/furnitureCatalog.js';
+import { getCatalogEntry, isRotatable } from './office/layout/furnitureCatalog.js';
 import { EditTool } from './office/types.js';
 import { isBrowserRuntime } from './runtime.js';
 import { vscode } from './vscodeApi.js';
@@ -158,6 +158,7 @@ function App() {
 
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
+  const [showActiveLabels, setShowActiveLabels] = useState(false);
   const [showKanban, setShowKanban] = useState(false);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
@@ -165,6 +166,7 @@ function App() {
     () => setAlwaysShowOverlay((prev) => !prev),
     [],
   );
+  const handleToggleShowActiveLabels = useCallback(() => setShowActiveLabels((prev) => !prev), []);
 
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id });
@@ -270,6 +272,7 @@ function App() {
         panRef={editor.panRef}
         todos={todos}
         onWhiteboardClick={() => setShowKanban(true)}
+        isDebugMode={isDebugMode}
       />
 
       {!isDebugMode && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
@@ -293,6 +296,8 @@ function App() {
         onToggleDebugMode={handleToggleDebugMode}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
+        showActiveLabels={showActiveLabels}
+        onToggleShowActiveLabels={handleToggleShowActiveLabels}
         workspaceFolders={workspaceFolders}
         isStandalone={isStandalone}
       />
@@ -328,9 +333,14 @@ function App() {
         (() => {
           // Compute selected furniture color from current layout
           const selUid = editorState.selectedFurnitureUid;
-          const selColor = selUid
-            ? (officeState.getLayout().furniture.find((f) => f.uid === selUid)?.color ?? null)
+          const selFurniture = selUid
+            ? officeState.getLayout().furniture.find((f) => f.uid === selUid)
             : null;
+          const selColor = selFurniture?.color ?? null;
+          const selProjectLabel = selFurniture?.projectLabel ?? '';
+          const selFurnitureIsDesk = selFurniture
+            ? (getCatalogEntry(selFurniture.type)?.isDesk ?? false)
+            : false;
           return (
             <EditorToolbar
               activeTool={editorState.activeTool}
@@ -338,6 +348,8 @@ function App() {
               selectedFurnitureType={editorState.selectedFurnitureType}
               selectedFurnitureUid={selUid}
               selectedFurnitureColor={selColor}
+              selectedFurnitureProjectLabel={selProjectLabel}
+              selectedFurnitureIsDesk={selFurnitureIsDesk}
               floorColor={editorState.floorColor}
               wallColor={editorState.wallColor}
               selectedWallSet={editorState.selectedWallSet}
@@ -347,6 +359,7 @@ function App() {
               onWallColorChange={editor.handleWallColorChange}
               onWallSetChange={editor.handleWallSetChange}
               onSelectedFurnitureColorChange={editor.handleSelectedFurnitureColorChange}
+              onSelectedFurnitureProjectLabel={editor.handleSelectedFurnitureProjectLabel}
               onFurnitureTypeChange={editor.handleFurnitureTypeChange}
               loadedAssets={loadedAssets}
             />
@@ -364,6 +377,7 @@ function App() {
           panRef={editor.panRef}
           onCloseAgent={handleCloseAgent}
           alwaysShowOverlay={alwaysShowOverlay}
+          showActiveLabels={showActiveLabels}
         />
       )}
 

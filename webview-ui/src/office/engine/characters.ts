@@ -1,4 +1,8 @@
 import {
+  AMENITY_VISIT_USE_SEC,
+  DESK_VISIT_USE_SEC,
+  HANDOFF_VISIT_USE_SEC,
+  PRINTER_BEATDOWN_DURATION_SEC,
   SEAT_REST_MAX_SEC,
   SEAT_REST_MIN_SEC,
   TYPE_FRAME_DURATION_SEC,
@@ -78,7 +82,11 @@ export function createCharacter(
     bubbleType: null,
     bubbleTimer: 0,
     seatTimer: 0,
+    idleTimer: 0,
+    permissionTimer: 0,
+    turnTimer: 0,
     isSubagent: false,
+    hasLaptop: false,
     parentAgentId: null,
     matrixEffect: null,
     matrixEffectTimer: 0,
@@ -197,6 +205,113 @@ export function updateCharacter(
         }
       }
       // Fall through to normal state machine for WALK movement
+    }
+  }
+
+  // Handle amenity visit phases (water cooler, coffee machine)
+  if (ch.amenityVisit) {
+    const visit = ch.amenityVisit;
+
+    if (visit.phase === 'walking_to') {
+      if (ch.state !== CharacterState.WALK || ch.path.length === 0) {
+        const target = tileCenter(visit.targetCol, visit.targetRow);
+        const dist = Math.abs(ch.x - target.x) + Math.abs(ch.y - target.y);
+        if (dist < 2) {
+          // Arrived — start using animation
+          visit.phase = 'using';
+          visit.timer =
+            visit.amenityType === 'HANDOFF'
+              ? HANDOFF_VISIT_USE_SEC
+              : visit.amenityType === 'DESK_VISIT'
+                ? DESK_VISIT_USE_SEC
+                : visit.printerBeatdown
+                  ? PRINTER_BEATDOWN_DURATION_SEC
+                  : AMENITY_VISIT_USE_SEC;
+          // Desk visits stand idle facing colleague; others use typing animation
+          ch.state = visit.amenityType === 'DESK_VISIT' ? CharacterState.IDLE : CharacterState.TYPE;
+          // Handoff/desk visits face toward the target agent;
+          // amenity visits face up toward the amenity
+          ch.dir = visit.facingDir ?? Direction.UP;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+        } else if (ch.state !== CharacterState.WALK) {
+          const path = findPath(
+            ch.tileCol,
+            ch.tileRow,
+            visit.targetCol,
+            visit.targetRow,
+            tileMap,
+            blockedTiles,
+          );
+          if (path.length > 0) {
+            ch.path = path;
+            ch.moveProgress = 0;
+            ch.state = CharacterState.WALK;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+          } else {
+            // Can't reach — abort
+            const seat = seats.get(visit.returnSeatId);
+            if (seat) {
+              seat.assigned = true;
+              ch.seatId = visit.returnSeatId;
+            }
+            ch.amenityVisit = undefined;
+          }
+        }
+      }
+    } else if (visit.phase === 'using') {
+      // Animate typing while "using" the amenity (desk visits stand idle, no animation)
+      if (ch.state === CharacterState.TYPE && ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
+        ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
+        ch.frame = (ch.frame + 1) % 2;
+      }
+      visit.timer -= dt;
+      if (visit.timer <= 0) {
+        // Done — walk back to seat
+        visit.phase = 'walking_back';
+        const seat = seats.get(visit.returnSeatId);
+        if (seat) {
+          seat.assigned = true;
+          ch.seatId = visit.returnSeatId;
+          const path = findPath(
+            ch.tileCol,
+            ch.tileRow,
+            seat.seatCol,
+            seat.seatRow,
+            tileMap,
+            blockedTiles,
+          );
+          if (path.length > 0) {
+            ch.path = path;
+            ch.moveProgress = 0;
+            ch.state = CharacterState.WALK;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+          } else {
+            ch.amenityVisit = undefined;
+            ch.state = CharacterState.TYPE;
+            ch.dir = seat.facingDir;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+          }
+        } else {
+          ch.amenityVisit = undefined;
+        }
+      }
+      return; // skip normal state machine during using
+    } else if (visit.phase === 'walking_back') {
+      if (ch.seatId) {
+        const seat = seats.get(ch.seatId);
+        if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+          ch.amenityVisit = undefined;
+          ch.state = CharacterState.TYPE;
+          ch.dir = seat.facingDir;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+          return;
+        }
+      }
     }
   }
 

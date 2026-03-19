@@ -28,3 +28,7 @@ Thumbs.db
 # Project-specific
 .claude/
 /sprites-export
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

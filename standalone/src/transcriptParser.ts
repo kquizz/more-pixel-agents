@@ -11,7 +11,94 @@ import type { AgentState } from './types.js';
 
 export const PERMISSION_EXEMPT_TOOLS = new Set(['Task', 'Agent', 'AskUserQuestion']);
 
+/**
+ * Extract cd target paths from a shell command string.
+ * Handles commands like:
+ *   cd ../foo
+ *   cd /absolute/path && npm install
+ *   npm install ; cd ~/other
+ *   cd "path with spaces"
+ *   cd 'quoted/path'
+ */
+function extractCdTargets(command: string): string[] {
+  const targets: string[] = [];
+  // Split on && and ; to get individual commands, handling quoted strings
+  // We use a regex to find cd commands rather than splitting, which is more robust
+  const cdPattern = /(?:^|&&|;)\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = cdPattern.exec(command)) !== null) {
+    const target = match[1] ?? match[2] ?? match[3];
+    if (target) {
+      targets.push(target);
+    }
+  }
+  return targets;
+}
+
+/**
+ * Detect if a Bash command contains a cd that switches to a different project.
+ * Returns the resolved new project path if a switch is detected, null otherwise.
+ *
+ * @param command - The bash command string from tool_use input
+ * @param currentProjectPath - The agent's current project path (e.g., "/Users/foo/Code/myproject")
+ * @returns The new absolute project path, or null if no switch detected
+ */
+export function detectProjectSwitch(command: string, currentProjectPath: string): string | null {
+  if (!command || !currentProjectPath) return null;
+
+  const targets = extractCdTargets(command);
+  if (targets.length === 0) return null;
+
+  // Use the last cd target (the one that takes effect)
+  const target = targets[targets.length - 1];
+
+  // Handle bare `cd` (goes to home) — treat as no meaningful switch
+  if (!target || target === '~') return null;
+
+  let resolved: string;
+  if (target.startsWith('/')) {
+    // Absolute path
+    resolved = path.resolve(target);
+  } else if (target.startsWith('~/') || target === '~') {
+    // Home-relative path
+    const home = process.env.HOME || process.env.USERPROFILE || '/';
+    resolved = path.resolve(home, target.slice(2));
+  } else {
+    // Relative path — resolve against current project
+    resolved = path.resolve(currentProjectPath, target);
+  }
+
+  // Normalize both paths for comparison
+  const normalizedCurrent = path.resolve(currentProjectPath);
+  const normalizedNew = path.resolve(resolved);
+
+  // Same directory or subdirectory of current project — not a switch
+  if (normalizedNew === normalizedCurrent || normalizedNew.startsWith(normalizedCurrent + '/')) {
+    return null;
+  }
+
+  // Parent of current project or entirely different tree — it's a switch
+  return normalizedNew;
+}
+
 type Broadcast = (msg: Record<string, unknown>) => void;
+
+/** Extract project directory name from an absolute file path.
+ *  e.g., "/Users/kquillen/Code/tesla-site/src/foo.ts" → "tesla-site" */
+function extractProjectFromPath(filePath: unknown): string | null {
+  if (typeof filePath !== 'string' || !filePath.startsWith('/')) return null;
+  const segments = filePath.split('/');
+  const codeRoots = ['Code', 'Projects', 'repos', 'src', 'work', 'dev', 'games'];
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (codeRoots.includes(segments[i]) && segments[i + 1]) {
+      return segments[i + 1];
+    }
+  }
+  if (segments.length > 4 && segments[4]) {
+    return segments[4];
+  }
+  return null;
+}
 
 export function formatToolStatus(toolName: string, input: Record<string, unknown>): string {
   const base = (p: unknown) => (typeof p === 'string' ? path.basename(p) : '');
@@ -23,7 +110,9 @@ export function formatToolStatus(toolName: string, input: Record<string, unknown
     case 'Write':
       return `Writing ${base(input.file_path)}`;
     case 'Bash': {
-      const cmd = (input.command as string) || '';
+      let cmd = (input.command as string) || '';
+      // Strip leading "cd ... &&" prefixes for cleaner display
+      cmd = cmd.replace(/^(?:cd\s+\S+\s*&&\s*)+/, '');
       return `Running: ${cmd.length > BASH_COMMAND_DISPLAY_MAX_LENGTH ? cmd.slice(0, BASH_COMMAND_DISPLAY_MAX_LENGTH) + '\u2026' : cmd}`;
     }
     case 'Glob':
@@ -186,14 +275,22 @@ export function processTranscriptLine(
         for (const block of blocks) {
           if (block.type === 'tool_use' && block.id) {
             const toolName = block.name || '';
-            const status = formatToolStatus(toolName, block.input || {});
+            const input = block.input || {};
+            const status = formatToolStatus(toolName, input);
+            const projectHint = extractProjectFromPath(input.file_path || input.path) || null;
             agent.activeToolIds.add(block.id);
             agent.activeToolStatuses.set(block.id, status);
             agent.activeToolNames.set(block.id, toolName);
             if (!PERMISSION_EXEMPT_TOOLS.has(toolName)) {
               hasNonExemptTool = true;
             }
-            broadcast({ type: 'agentToolStart', id: agentId, toolId: block.id, status });
+            broadcast({
+              type: 'agentToolStart',
+              id: agentId,
+              toolId: block.id,
+              status,
+              ...(projectHint ? { projectHint } : {}),
+            });
 
             // Detect TaskCreate / TaskUpdate for todo tracking
             if (toolName === 'TaskCreate') {
@@ -353,7 +450,9 @@ function processProgressRecord(
     for (const block of content) {
       if (block.type === 'tool_use' && block.id) {
         const toolName = block.name || '';
-        const status = formatToolStatus(toolName, block.input || {});
+        const subInput = block.input || {};
+        const status = formatToolStatus(toolName, subInput);
+        const projectHint = extractProjectFromPath(subInput.file_path || subInput.path) || null;
 
         let subTools = agent.activeSubagentToolIds.get(parentToolId);
         if (!subTools) {
@@ -379,6 +478,7 @@ function processProgressRecord(
           parentToolId,
           toolId: block.id,
           status,
+          ...(projectHint ? { projectHint } : {}),
         });
       }
     }

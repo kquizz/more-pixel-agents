@@ -19,6 +19,8 @@ import {
   GHOST_VALID_TINT,
   GRID_LINE_COLOR,
   HOVERED_OUTLINE_ALPHA,
+  NIGHT_OVERLAY_COLOR,
+  NIGHT_OVERLAY_MAX_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
@@ -28,15 +30,38 @@ import {
   SELECTION_DASH_PATTERN,
   SELECTION_HIGHLIGHT_COLOR,
   SUBAGENT_SCALE,
+  SUNRISE_END_HOUR,
+  SUNRISE_START_HOUR,
+  SUNSET_END_HOUR,
+  SUNSET_START_HOUR,
+  TOOL_BUBBLE_BG_COLOR,
+  TOOL_BUBBLE_BORDER_COLOR,
+  TOOL_BUBBLE_FONT_SCALE,
+  TOOL_BUBBLE_MAX_LABEL_LENGTH,
+  TOOL_BUBBLE_MIN_FONT_SIZE,
+  TOOL_BUBBLE_MIN_PADDING,
+  TOOL_BUBBLE_PADDING_SCALE,
+  TOOL_BUBBLE_TEXT_COLOR,
+  TOOL_BUBBLE_VERTICAL_OFFSET,
   VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import {
+  BEER_BOTTLE_SPRITE,
+  BUBBLE_ALERT_SPRITE,
+  BUBBLE_CONFUSED_SPRITE,
+  BUBBLE_HEART_SPRITE,
+  BUBBLE_IDEA_SPRITE,
   BUBBLE_PERMISSION_SPRITE,
+  BUBBLE_SLEEP_SPRITE,
+  BUBBLE_SWEAT_SPRITE,
   BUBBLE_WAITING_SPRITE,
+  COFFEE_MUG_SPRITE,
   getCharacterSprites,
+  LAPTOP_SPRITE,
+  SODA_CAN_SPRITE,
 } from '../sprites/spriteData.js';
 import type {
   Character,
@@ -202,6 +227,48 @@ export function renderScene(
         c.drawImage(cached, drawX, drawY);
       },
     });
+
+    // Laptop sprite for sub-agents — on their lap when seated, at feet otherwise
+    if (ch.hasLaptop) {
+      const laptopCached = getCachedSprite(LAPTOP_SPRITE, charZoom);
+      const laptopX = Math.round(offsetX + ch.x * zoom - laptopCached.width / 2);
+      // When seated (TYPE state), position on lap area; otherwise at feet
+      const lapOffset = ch.state === CharacterState.TYPE ? Math.round(-charZoom * 10) : 0;
+      const laptopY = Math.round(
+        offsetY + (ch.y + sittingOffset) * zoom - laptopCached.height + lapOffset,
+      );
+      drawables.push({
+        zY: charZY + OUTLINE_Z_SORT_OFFSET, // in front of character (on lap)
+        draw: (c) => {
+          c.drawImage(laptopCached, laptopX, laptopY);
+        },
+      });
+    }
+
+    // Time-based desk drink — coffee (morning), soda (afternoon), beer (evening)
+    // Only show for non-sub-agents that are seated at a desk
+    if (!ch.isSubagent && ch.seatId && ch.state === CharacterState.TYPE) {
+      const hour = new Date().getHours();
+      let drinkSprite: SpriteData | null = null;
+      if (hour >= 5 && hour < 12) drinkSprite = COFFEE_MUG_SPRITE;
+      else if (hour >= 12 && hour < 18) drinkSprite = SODA_CAN_SPRITE;
+      else drinkSprite = BEER_BOTTLE_SPRITE;
+
+      if (drinkSprite) {
+        const drinkZoom = Math.max(1, Math.round(zoom * 0.6));
+        const drinkCached = getCachedSprite(drinkSprite, drinkZoom);
+        // Place drink on the desk surface — offset to the right of center
+        const drinkX = Math.round(offsetX + (ch.x + 6) * zoom - drinkCached.width / 2);
+        // Position at desk level (above the character, on the desk surface)
+        const drinkY = Math.round(offsetY + (ch.y - TILE_SIZE + 4) * zoom);
+        drawables.push({
+          zY: ch.y - TILE_SIZE + 0.1, // on the desk, behind the character
+          draw: (c) => {
+            c.drawImage(drinkCached, drinkX, drinkY);
+          },
+        });
+      }
+    }
   }
 
   // Sort by Y (lower = in front = drawn later)
@@ -492,12 +559,43 @@ export function renderBubbles(
   for (const ch of characters) {
     if (!ch.bubbleType) continue;
 
-    const sprite =
-      ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE;
+    let sprite: SpriteData;
+    switch (ch.bubbleType) {
+      case 'permission':
+        sprite = BUBBLE_PERMISSION_SPRITE;
+        break;
+      case 'waiting':
+        sprite = BUBBLE_WAITING_SPRITE;
+        break;
+      case 'sleep':
+        sprite = BUBBLE_SLEEP_SPRITE;
+        break;
+      case 'alert':
+        sprite = BUBBLE_ALERT_SPRITE;
+        break;
+      case 'confused':
+        sprite = BUBBLE_CONFUSED_SPRITE;
+        break;
+      case 'sweat':
+        sprite = BUBBLE_SWEAT_SPRITE;
+        break;
+      case 'idea':
+        sprite = BUBBLE_IDEA_SPRITE;
+        break;
+      case 'heart':
+        sprite = BUBBLE_HEART_SPRITE;
+        break;
+      default:
+        continue;
+    }
 
-    // Compute opacity: permission = full, waiting = fade in last 0.5s
+    // Compute opacity: permission/sleep = full, timed bubbles fade out
     let alpha = 1.0;
-    if (ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
+    if (
+      ch.bubbleType !== 'permission' &&
+      ch.bubbleType !== 'sleep' &&
+      ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
+    ) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC;
     }
 
@@ -517,6 +615,69 @@ export function renderBubbles(
     if (alpha < 1.0) ctx.globalAlpha = alpha;
     ctx.drawImage(cached, bubbleX, bubbleY);
     ctx.restore();
+  }
+}
+
+// ── Tool thought bubbles ─────────────────────────────────────────
+
+export function renderToolBubbles(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const fontSize = Math.max(TOOL_BUBBLE_MIN_FONT_SIZE, Math.round(zoom * TOOL_BUBBLE_FONT_SCALE));
+  ctx.font = `${fontSize}px "Courier New", monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+
+  for (const ch of characters) {
+    if (!ch.currentTool || !ch.isActive || ch.matrixEffect) continue;
+
+    // Skip if a permission/waiting bubble is already showing
+    if (ch.bubbleType) continue;
+
+    // Truncate tool name
+    const label =
+      ch.currentTool.length > TOOL_BUBBLE_MAX_LABEL_LENGTH
+        ? ch.currentTool.slice(0, TOOL_BUBBLE_MAX_LABEL_LENGTH)
+        : ch.currentTool;
+
+    const padding = Math.max(TOOL_BUBBLE_MIN_PADDING, Math.round(zoom * TOOL_BUBBLE_PADDING_SCALE));
+    const textWidth = ctx.measureText(label).width;
+    const bgWidth = textWidth + padding * 2;
+    const bgHeight = fontSize + padding * 2;
+
+    // Position above character head (above any existing sprite bubbles)
+    const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const centerX = Math.round(offsetX + ch.x * zoom);
+    const bottomY = Math.round(
+      offsetY + (ch.y + sittingOffset) * zoom - zoom * TOOL_BUBBLE_VERTICAL_OFFSET,
+    );
+
+    // Background
+    ctx.fillStyle = TOOL_BUBBLE_BG_COLOR;
+    ctx.fillRect(
+      Math.round(centerX - bgWidth / 2),
+      Math.round(bottomY - bgHeight),
+      bgWidth,
+      bgHeight,
+    );
+
+    // Border
+    ctx.strokeStyle = TOOL_BUBBLE_BORDER_COLOR;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      Math.round(centerX - bgWidth / 2),
+      Math.round(bottomY - bgHeight),
+      bgWidth,
+      bgHeight,
+    );
+
+    // Text
+    ctx.fillStyle = TOOL_BUBBLE_TEXT_COLOR;
+    ctx.fillText(label, centerX, bottomY - padding);
   }
 }
 
@@ -643,35 +804,6 @@ export interface ButtonBounds {
 export type DeleteButtonBounds = ButtonBounds;
 export type RotateButtonBounds = ButtonBounds;
 
-// ── Desk labels ──────────────────────────────────────────────────
-
-function renderDeskLabels(
-  ctx: CanvasRenderingContext2D,
-  deskLabels: Array<{ col: number; row: number; label: string }>,
-  offsetX: number,
-  offsetY: number,
-  zoom: number,
-): void {
-  if (deskLabels.length === 0) return;
-  const fontSize = Math.max(4, Math.round(5 * zoom));
-  ctx.save();
-  ctx.font = `${fontSize}px "Courier New", Courier, monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.globalAlpha = 0.6;
-
-  for (const { col, row, label } of deskLabels) {
-    const x = Math.round(offsetX + (col * TILE_SIZE + TILE_SIZE / 2) * zoom);
-    const y = Math.round(offsetY + (row * TILE_SIZE + TILE_SIZE / 2) * zoom);
-    const textWidth = ctx.measureText(label).width;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(x - textWidth / 2 - 2, y - fontSize / 2 - 1, textWidth + 4, fontSize + 2);
-    ctx.fillStyle = '#cdd6f4';
-    ctx.fillText(label, x, y);
-  }
-  ctx.restore();
-}
-
 // ── Whiteboard todos ─────────────────────────────────────────────
 
 function renderWhiteboardTodos(
@@ -691,10 +823,16 @@ function renderWhiteboardTodos(
   const maxCols = Math.floor((wb.width * TILE_SIZE * zoom - padding * 2) / (blockSize + 1));
   if (maxCols <= 0) return;
 
+  // Cap completed items at 6 most recent
+  const MAX_DONE = 6;
+  const completed = todos.filter((t) => t.status === 'completed');
+  const nonCompleted = todos.filter((t) => t.status !== 'completed');
+  const capped = [...nonCompleted, ...completed.slice(-MAX_DONE)];
+
   ctx.save();
   let c = 0,
     r = 0;
-  for (const todo of todos) {
+  for (const todo of capped) {
     ctx.fillStyle =
       todo.status === 'completed'
         ? '#a6e3a1'
@@ -708,6 +846,43 @@ function renderWhiteboardTodos(
       r++;
     }
   }
+  ctx.restore();
+}
+
+// ── Day/Night Cycle ─────────────────────────────────────────────
+
+/** Compute the overlay alpha for the day/night cycle based on the current system time. */
+function getDayNightAlpha(): number {
+  const hour = new Date().getHours() + new Date().getMinutes() / 60;
+
+  if (hour >= SUNRISE_START_HOUR && hour < SUNRISE_END_HOUR) {
+    // Sunrise: gradually lighten from max alpha to 0
+    const t = (hour - SUNRISE_START_HOUR) / (SUNRISE_END_HOUR - SUNRISE_START_HOUR);
+    return NIGHT_OVERLAY_MAX_ALPHA * (1 - t);
+  }
+  if (hour >= SUNRISE_END_HOUR && hour < SUNSET_START_HOUR) {
+    // Daytime: no overlay
+    return 0;
+  }
+  if (hour >= SUNSET_START_HOUR && hour < SUNSET_END_HOUR) {
+    // Sunset: gradually darken from 0 to max alpha
+    const t = (hour - SUNSET_START_HOUR) / (SUNSET_END_HOUR - SUNSET_START_HOUR);
+    return NIGHT_OVERLAY_MAX_ALPHA * t;
+  }
+  // Night: full overlay
+  return NIGHT_OVERLAY_MAX_ALPHA;
+}
+
+export function renderDayNightOverlay(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+): void {
+  const alpha = getDayNightAlpha();
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.fillStyle = NIGHT_OVERLAY_COLOR + ' ' + alpha.toFixed(4) + ')';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   ctx.restore();
 }
 
@@ -759,9 +934,10 @@ export function renderFrame(
   tileColors?: Array<FloorColor | null>,
   layoutCols?: number,
   layoutRows?: number,
-  deskLabels?: Array<{ col: number; row: number; label: string }>,
+  _deskLabels?: Array<{ col: number; row: number; label: string }>,
   whiteboards?: Array<{ col: number; row: number; width: number; height: number }>,
   todos?: Array<{ status: string }>,
+  debugSeats?: Map<string, Seat>,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -802,10 +978,66 @@ export function renderFrame(
   const hoveredId = selection?.hoveredAgentId ?? null;
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId);
 
-  // Desk labels (on desk surfaces, after furniture but visually part of the scene)
-  if (deskLabels && deskLabels.length > 0) {
-    renderDeskLabels(ctx, deskLabels, offsetX, offsetY, zoom);
+  // Debug: draw seat positions and character positions
+  if (debugSeats && debugSeats.size > 0) {
+    ctx.save();
+    const s = TILE_SIZE * zoom;
+    // Draw all seats as colored squares
+    for (const [uid, seat] of debugSeats) {
+      const x = offsetX + seat.seatCol * s;
+      const y = offsetY + seat.seatRow * s;
+      // Green = unassigned, blue = assigned
+      ctx.fillStyle = seat.assigned ? 'rgba(60, 120, 255, 0.4)' : 'rgba(60, 255, 120, 0.4)';
+      ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+      // Draw facing direction arrow
+      const cx = x + s / 2;
+      const cy = y + s / 2;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = Math.max(1, zoom * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      const arrowLen = s * 0.4;
+      const dx = seat.facingDir === 3 ? arrowLen : seat.facingDir === 2 ? -arrowLen : 0;
+      const dy = seat.facingDir === 1 ? arrowLen : seat.facingDir === 0 ? -arrowLen : 0;
+      ctx.lineTo(cx + dx, cy + dy);
+      ctx.stroke();
+      // Label
+      const fontSize = Math.max(4, Math.round(3 * zoom));
+      ctx.font = `${fontSize}px monospace`;
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText(uid.slice(-4), cx, y + s - 2);
+    }
+    // Draw character positions as red dots
+    for (const ch of characters) {
+      const cx = offsetX + ch.x * zoom;
+      const cy = offsetY + ch.y * zoom;
+      ctx.fillStyle = 'rgba(255, 60, 60, 0.8)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(2, zoom), 0, Math.PI * 2);
+      ctx.fill();
+      // Show seat assignment
+      if (ch.seatId) {
+        const seat = debugSeats.get(ch.seatId);
+        if (seat) {
+          ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([zoom, zoom]);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(offsetX + (seat.seatCol + 0.5) * s, offsetY + (seat.seatRow + 0.5) * s);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+    }
+    ctx.restore();
   }
+
+  // Desk labels disabled — folder names on desk surfaces were too noisy
+  // if (deskLabels && deskLabels.length > 0) {
+  //   renderDeskLabels(ctx, deskLabels, offsetX, offsetY, zoom);
+  // }
 
   // Whiteboard todo blocks
   if (whiteboards && todos) {
@@ -814,6 +1046,17 @@ export function renderFrame(
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
+
+  // Tool thought bubbles (text-based, shown when no speech bubble is active)
+  renderToolBubbles(ctx, characters, offsetX, offsetY, zoom);
+
+  // Hover tooltip disabled — ToolOverlay (React) shows the same info more cleanly
+  // if (hoveredId !== null) {
+  //   const hoveredCh = characters.find((c) => c.id === hoveredId);
+  //   if (hoveredCh && !hoveredCh.matrixEffect) {
+  //     renderTooltip(ctx, hoveredCh, offsetX, offsetY, zoom);
+  //   }
+  // }
 
   // Project path labels below characters
   // Labels disabled — agents are identified by their consistent character appearance
@@ -889,6 +1132,9 @@ export function renderFrame(
       editor.rotateButtonBounds = null;
     }
   }
+
+  // Day/night cycle overlay — tints the entire canvas after all scene rendering
+  renderDayNightOverlay(ctx, canvasWidth, canvasHeight);
 
   return { offsetX, offsetY };
 }

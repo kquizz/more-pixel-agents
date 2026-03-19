@@ -1,19 +1,40 @@
 import {
+  ALL_IDLE_FUN_COOLDOWN_SEC,
+  ALL_IDLE_THRESHOLD_SEC,
+  AMBIENT_ANIM_INTERVAL_SEC,
+  AMENITY_FURNITURE_TYPES,
+  AMENITY_VISIT_CHANCE,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
+  CELEBRATION_CHANCE,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_SITTING_OFFSET_PX,
+  DESK_VISIT_CHANCE,
   DISMISS_BUBBLE_FAST_FADE_SEC,
   FURNITURE_ANIM_INTERVAL_SEC,
+  GREETING_DURATION_SEC,
+  GREETING_PARENT_EXTRA_SEC,
+  HANDOFF_VISIT_USE_SEC,
   HUE_SHIFT_MIN_DEG,
   HUE_SHIFT_RANGE_DEG,
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
+  LONG_TURN_THRESHOLD_SEC,
   MAX_SUBAGENTS_PER_PARENT,
   PALETTE_COUNT,
+  PERMISSION_IMPATIENT_SEC,
+  PERMISSION_SWEAT_INTERVAL_SEC,
+  PRINTER_BEATDOWN_CHANCE,
+  REACTION_BUBBLE_DURATION_SEC,
+  RUBBER_DUCK_CHANCE,
+  RUBBER_DUCK_STARE_SEC,
+  SCREEN_SHAKE_DURATION_SEC,
+  SCREEN_SHAKE_INTENSITY,
+  SLEEP_IDLE_THRESHOLD_SEC,
   SUBAGENT_SCALE,
   WAITING_BUBBLE_DURATION_SEC,
+  WHITEBOARD_ARGUMENT_CHANCE,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
 import {
@@ -36,6 +57,22 @@ import { CharacterState, Direction, MATRIX_EFFECT_DURATION, TILE_SIZE } from '..
 import { createCharacter, updateCharacter } from './characters.js';
 import { matrixEffectSeeds } from './matrixEffect.js';
 
+/** Compute the cardinal direction from one tile toward another */
+function directionToward(
+  fromCol: number,
+  fromRow: number,
+  toCol: number,
+  toRow: number,
+): Direction {
+  const dc = toCol - fromCol;
+  const dr = toRow - fromRow;
+  // Prefer the axis with the larger delta
+  if (Math.abs(dc) >= Math.abs(dr)) {
+    return dc >= 0 ? Direction.RIGHT : Direction.LEFT;
+  }
+  return dr >= 0 ? Direction.DOWN : Direction.UP;
+}
+
 export class OfficeState {
   layout: OfficeLayout;
   tileMap: TileTypeVal[][];
@@ -46,6 +83,14 @@ export class OfficeState {
   characters: Map<number, Character> = new Map();
   /** Accumulated time for furniture animation frame cycling */
   furnitureAnimTimer = 0;
+  /** Screen shake timer (counts down from SCREEN_SHAKE_DURATION_SEC) */
+  screenShakeTimer = 0;
+  /** Timer tracking how long ALL agents have been idle simultaneously */
+  allIdleTimer = 0;
+  /** Cooldown preventing all-idle fun from triggering too often */
+  allIdleCooldown = 0;
+  /** Screen shake pixel offset (updated each frame during shake) */
+  screenShakeOffset = { x: 0, y: 0 };
   selectedAgentId: number | null = null;
   cameraFollowId: number | null = null;
   hoveredAgentId: number | null = null;
@@ -177,12 +222,41 @@ export class OfficeState {
     return result;
   }
 
+  /**
+   * Find a free seat matching a project path by substring match against seat projectLabel.
+   * Returns the best matching seat (closest to a PC preferred), or null.
+   */
+  findProjectSeat(projectPath: string): string | null {
+    if (!projectPath) return null;
+    // Extract folder name segments for matching (e.g., "/Users/foo/Code/tesla-site" → "tesla-site")
+    const segments = projectPath.replace(/\\/g, '/').split('/').filter(Boolean);
+    const available = Array.from(this.seats.entries())
+      .filter(([, s]) => {
+        if (s.assigned || !s.projectLabel) return false;
+        // Match if projectPath contains the label as a folder segment or substring
+        const label = s.projectLabel.toLowerCase();
+        return (
+          segments.some((seg) => seg.toLowerCase() === label) ||
+          projectPath.toLowerCase().includes(label)
+        );
+      })
+      .sort((a, b) => (a[1].pcDistance ?? Infinity) - (b[1].pcDistance ?? Infinity));
+    return available.length > 0 ? available[0][0] : null;
+  }
+
   private findFreeSeat(preferDesk?: boolean): string | null {
     if (preferDesk) {
-      // Sort available seats by PC distance (closest first = best workstation)
+      // Sort available seats: closest to PC first, then prefer UP-facing (classic workstation)
       const available = Array.from(this.seats.entries())
         .filter(([, s]) => !s.assigned && s.facesDesk)
-        .sort((a, b) => (a[1].pcDistance ?? Infinity) - (b[1].pcDistance ?? Infinity));
+        .sort((a, b) => {
+          const distDiff = (a[1].pcDistance ?? Infinity) - (b[1].pcDistance ?? Infinity);
+          if (distDiff !== 0) return distDiff;
+          // Tiebreaker: prefer UP-facing seats (facing a desk above = classic workstation)
+          const aUp = a[1].facingDir === Direction.UP ? 0 : 1;
+          const bUp = b[1].facingDir === Direction.UP ? 0 : 1;
+          return aUp - bUp;
+        });
       if (available.length > 0) return available[0][0];
     } else if (preferDesk === false) {
       // First try non-desk seats (couches, lounge chairs)
@@ -231,6 +305,7 @@ export class OfficeState {
     preferredSeatId?: string,
     skipSpawnEffect?: boolean,
     folderName?: string,
+    projectPath?: string,
   ): void {
     if (this.characters.has(id)) return;
 
@@ -245,13 +320,17 @@ export class OfficeState {
       hueShift = pick.hueShift;
     }
 
-    // Try preferred seat first, then any free seat
+    // Try preferred seat first, then project-matching seat, then any free seat
     let seatId: string | null = null;
     if (preferredSeatId && this.seats.has(preferredSeatId)) {
       const seat = this.seats.get(preferredSeatId)!;
       if (!seat.assigned) {
         seatId = preferredSeatId;
       }
+    }
+    if (!seatId && projectPath) {
+      // Try to find a seat at a desk labeled with this agent's project
+      seatId = this.findProjectSeat(projectPath);
     }
     if (!seatId) {
       seatId = this.findFreeSeat(true);
@@ -263,7 +342,7 @@ export class OfficeState {
       seat.assigned = true;
       ch = createCharacter(id, palette, seatId, seat, hueShift);
     } else {
-      // No seats — spawn at random walkable tile
+      // No seats — spawn at random walkable tile in idle state
       const spawn =
         this.walkableTiles.length > 0
           ? this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
@@ -273,6 +352,7 @@ export class OfficeState {
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2;
       ch.tileCol = spawn.col;
       ch.tileRow = spawn.row;
+      ch.state = CharacterState.IDLE; // don't show typing animation without a seat
     }
 
     if (folderName) {
@@ -427,19 +507,34 @@ export class OfficeState {
     const palette = parentCh ? parentCh.palette : 0;
     const hueShift = parentCh ? parentCh.hueShift : 0;
 
-    // Find the free seat closest to the parent agent
+    // Find the free seat closest to the parent agent.
+    // Prefer non-desk seats (couches, lounge chairs) so sub-agents work on laptops from the couch.
     const parentCol = parentCh ? parentCh.tileCol : 0;
     const parentRow = parentCh ? parentCh.tileRow : 0;
     const dist = (c: number, r: number) => Math.abs(c - parentCol) + Math.abs(r - parentRow);
 
     let bestSeatId: string | null = null;
     let bestDist = Infinity;
+    // First pass: non-desk seats only
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned) {
+      if (!seat.assigned && !seat.facesDesk) {
         const d = dist(seat.seatCol, seat.seatRow);
         if (d < bestDist) {
           bestDist = d;
           bestSeatId = uid;
+        }
+      }
+    }
+    // Fallback: any free seat
+    if (!bestSeatId) {
+      bestDist = Infinity;
+      for (const [uid, seat] of this.seats) {
+        if (!seat.assigned) {
+          const d = dist(seat.seatCol, seat.seatRow);
+          if (d < bestDist) {
+            bestDist = d;
+            bestSeatId = uid;
+          }
         }
       }
     }
@@ -471,10 +566,20 @@ export class OfficeState {
       ch.tileRow = spawn.row;
     }
     ch.isSubagent = true;
+    ch.hasLaptop = true;
     ch.parentAgentId = parentAgentId;
     ch.matrixEffect = 'spawn';
     ch.matrixEffectTimer = 0;
     ch.matrixEffectSeeds = matrixEffectSeeds();
+
+    // Set up greeting animation: sub-agent and parent face each other after spawn
+    if (parentCh) {
+      ch.dir = directionToward(ch.tileCol, ch.tileRow, parentCh.tileCol, parentCh.tileRow);
+      ch.greetingTimer = GREETING_DURATION_SEC;
+      parentCh.dir = directionToward(parentCh.tileCol, parentCh.tileRow, ch.tileCol, ch.tileRow);
+      parentCh.greetingTimer = GREETING_DURATION_SEC + GREETING_PARENT_EXTRA_SEC;
+    }
+
     this.characters.set(id, ch);
 
     this.subagentIdMap.set(key, id);
@@ -556,8 +661,29 @@ export class OfficeState {
   setAgentActive(id: number, active: boolean): void {
     const ch = this.characters.get(id);
     if (ch) {
+      const wasActive = ch.isActive;
       ch.isActive = active;
-      if (!active) {
+      if (active) {
+        // Clear sleep/cosmetic bubbles when agent wakes up (preserve permission)
+        if (ch.bubbleType === 'sleep') {
+          ch.bubbleType = null;
+          ch.bubbleTimer = 0;
+        }
+        ch.idleTimer = 0;
+        // Start tracking turn duration
+        if (!wasActive) {
+          ch.turnTimer = 0;
+        }
+      } else {
+        // Turn just ended — check for "I'm in" celebration on long turns
+        if (
+          wasActive &&
+          ch.turnTimer >= LONG_TURN_THRESHOLD_SEC &&
+          Math.random() < CELEBRATION_CHANCE
+        ) {
+          this.showReactionBubble(id, 'idea');
+        }
+        ch.turnTimer = 0;
         // Sentinel -1: signals turn just ended, skip next seat rest timer.
         // Prevents the WALK handler from setting a 2-4 min rest on arrival.
         ch.seatTimer = -1;
@@ -565,6 +691,90 @@ export class OfficeState {
         ch.moveProgress = 0;
       }
       this.rebuildFurnitureInstances();
+    }
+  }
+
+  /** Update agent's project and reassign to a project-labeled desk if available */
+  updateAgentProject(id: number, project: string): void {
+    const ch = this.characters.get(id);
+    if (!ch || ch.isSubagent) return;
+
+    // Check if project actually changed
+    const currentProject = ch.projectPath?.split('/').pop()?.toLowerCase();
+    if (currentProject === project.toLowerCase()) return;
+
+    ch.projectPath = project;
+
+    // Try to find a desk labeled for this project
+    const newSeatId = this.findProjectSeat(project);
+    if (newSeatId && newSeatId !== ch.seatId) {
+      // Release current seat
+      if (ch.seatId) {
+        const oldSeat = this.seats.get(ch.seatId);
+        if (oldSeat) oldSeat.assigned = false;
+      }
+      // Claim new seat
+      const newSeat = this.seats.get(newSeatId)!;
+      newSeat.assigned = true;
+      ch.seatId = newSeatId;
+      // Pathfind to new seat
+      const path = this.withOwnSeatUnblocked(ch, () =>
+        findPath(
+          ch.tileCol,
+          ch.tileRow,
+          newSeat.seatCol,
+          newSeat.seatRow,
+          this.tileMap,
+          this.blockedTiles,
+        ),
+      );
+      if (path.length > 0) {
+        ch.path = path;
+        ch.moveProgress = 0;
+        ch.state = CharacterState.WALK;
+        ch.frame = 0;
+        ch.frameTimer = 0;
+      } else {
+        // Can't pathfind — snap to seat
+        ch.tileCol = newSeat.seatCol;
+        ch.tileRow = newSeat.seatRow;
+        ch.x = newSeat.seatCol * TILE_SIZE + TILE_SIZE / 2;
+        ch.y = newSeat.seatRow * TILE_SIZE + TILE_SIZE / 2;
+      }
+      ch.dir = newSeat.facingDir;
+      this.rebuildFurnitureInstances();
+    } else if (!newSeatId && ch.seatId) {
+      // No labeled desk for this project — auto-label the current desk
+      this.autoLabelDesk(ch.seatId, project);
+    }
+  }
+
+  /** Auto-label the desk adjacent to a seat with a project name */
+  private autoLabelDesk(seatId: string, project: string): void {
+    const seat = this.seats.get(seatId);
+    if (!seat || seat.projectLabel) return; // already labeled
+
+    for (const item of this.layout.furniture) {
+      const entry = getCatalogEntry(item.type);
+      if (!entry || !entry.isDesk) continue;
+      for (let dr = 0; dr < entry.footprintH; dr++) {
+        for (let dc = 0; dc < entry.footprintW; dc++) {
+          const dist =
+            Math.abs(seat.seatCol - (item.col + dc)) + Math.abs(seat.seatRow - (item.row + dr));
+          if (dist <= 1) {
+            item.projectLabel = project;
+            // Rebuild seats to propagate the label
+            this.seats = layoutToSeats(this.layout.furniture);
+            for (const ch of this.characters.values()) {
+              if (ch.seatId) {
+                const s = this.seats.get(ch.seatId);
+                if (s) s.assigned = true;
+              }
+            }
+            return;
+          }
+        }
+      }
     }
   }
 
@@ -602,34 +812,44 @@ export class OfficeState {
       }
     }
 
-    if (autoOnTiles.size === 0) {
-      this.furniture = layoutToFurnitureInstances(this.layout.furniture);
-      return;
-    }
-
-    // Build modified furniture list with auto-state and animation applied
+    // Build modified furniture list with auto-state and always-on animation applied
     const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
+    const ambientFrame = Math.floor(this.furnitureAnimTimer / AMBIENT_ANIM_INTERVAL_SEC);
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
       const entry = getCatalogEntry(item.type);
       if (!entry) return item;
-      // Check if any tile of this furniture overlaps an auto-on tile
-      for (let dr = 0; dr < entry.footprintH; dr++) {
-        for (let dc = 0; dc < entry.footprintW; dc++) {
-          if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
-            let onType = getOnStateType(item.type);
-            if (onType !== item.type) {
-              // Check if the on-state type has animation frames
-              const frames = getAnimationFrames(onType);
-              if (frames && frames.length > 1) {
-                const frameIdx = animFrame % frames.length;
-                onType = frames[frameIdx];
+
+      // Always-on animation: cycle frames for items with animationGroup (e.g. fish tank)
+      const frames = getAnimationFrames(item.type);
+      if (frames && frames.length > 1) {
+        const frameIdx = ambientFrame % frames.length;
+        if (frames[frameIdx] !== item.type) {
+          return { ...item, type: frames[frameIdx] };
+        }
+        return item;
+      }
+
+      // Auto-state: check if any tile of this furniture overlaps an auto-on tile
+      if (autoOnTiles.size > 0) {
+        for (let dr = 0; dr < entry.footprintH; dr++) {
+          for (let dc = 0; dc < entry.footprintW; dc++) {
+            if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
+              let onType = getOnStateType(item.type);
+              if (onType !== item.type) {
+                // Check if the on-state type has animation frames
+                const onFrames = getAnimationFrames(onType);
+                if (onFrames && onFrames.length > 1) {
+                  const frameIdx2 = animFrame % onFrames.length;
+                  onType = onFrames[frameIdx2];
+                }
+                return { ...item, type: onType };
               }
-              return { ...item, type: onType };
+              return item;
             }
-            return item;
           }
         }
       }
+
       return item;
     });
 
@@ -648,6 +868,7 @@ export class OfficeState {
     if (ch) {
       ch.bubbleType = 'permission';
       ch.bubbleTimer = 0;
+      ch.permissionTimer = 0;
     }
   }
 
@@ -667,26 +888,69 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
+  /** Trigger screen shake effect */
+  triggerScreenShake(): void {
+    this.screenShakeTimer = SCREEN_SHAKE_DURATION_SEC;
+  }
+
+  /** Show a timed reaction bubble (alert, confused, sweat, idea, heart) that auto-fades */
+  showReactionBubble(id: number, type: 'alert' | 'confused' | 'sweat' | 'idea' | 'heart'): void {
+    const ch = this.characters.get(id);
+    if (!ch) return;
+    // Don't override permission bubbles (those are functional, not cosmetic)
+    if (ch.bubbleType === 'permission') return;
+    ch.bubbleType = type;
+    ch.bubbleTimer = REACTION_BUBBLE_DURATION_SEC;
+  }
+
+  /** Show sleep bubble (stays until agent becomes active) */
+  showSleepBubble(id: number): void {
+    const ch = this.characters.get(id);
+    if (!ch) return;
+    if (ch.bubbleType === 'permission') return;
+    ch.bubbleType = 'sleep';
+    ch.bubbleTimer = 0; // no auto-fade — cleared when agent becomes active
+  }
+
+  /** Dismiss bubble on click — permission: instant, timed: quick fade */
   dismissBubble(id: number): void {
     const ch = this.characters.get(id);
     if (!ch || !ch.bubbleType) return;
     if (ch.bubbleType === 'permission') {
       ch.bubbleType = null;
       ch.bubbleTimer = 0;
-    } else if (ch.bubbleType === 'waiting') {
-      // Trigger immediate fade (0.3s remaining)
+    } else if (ch.bubbleType === 'sleep') {
+      ch.bubbleType = null;
+      ch.bubbleTimer = 0;
+    } else {
+      // Timed bubbles: trigger immediate fade
       ch.bubbleTimer = Math.min(ch.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC);
     }
   }
 
   update(dt: number): void {
-    // Furniture animation cycling
+    // Furniture animation cycling (check both fast and ambient intervals)
     const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
+    const prevAmbient = Math.floor(this.furnitureAnimTimer / AMBIENT_ANIM_INTERVAL_SEC);
     this.furnitureAnimTimer += dt;
     const newFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
-    if (newFrame !== prevFrame) {
+    const newAmbient = Math.floor(this.furnitureAnimTimer / AMBIENT_ANIM_INTERVAL_SEC);
+    if (newFrame !== prevFrame || newAmbient !== prevAmbient) {
       this.rebuildFurnitureInstances();
+    }
+
+    // Screen shake update
+    if (this.screenShakeTimer > 0) {
+      this.screenShakeTimer -= dt;
+      if (this.screenShakeTimer <= 0) {
+        this.screenShakeTimer = 0;
+        this.screenShakeOffset = { x: 0, y: 0 };
+      } else {
+        this.screenShakeOffset = {
+          x: (Math.random() * 2 - 1) * SCREEN_SHAKE_INTENSITY,
+          y: (Math.random() * 2 - 1) * SCREEN_SHAKE_INTENSITY,
+        };
+      }
     }
 
     const toDelete: number[] = [];
@@ -708,20 +972,196 @@ export class OfficeState {
         continue; // skip normal FSM while effect is active
       }
 
+      // Greeting pause: character stands facing partner, skip normal FSM
+      if (ch.greetingTimer !== undefined && ch.greetingTimer > 0) {
+        // Show standing pose during greeting (IDLE uses walk frame 1 = standing)
+        if (ch.state !== CharacterState.IDLE) {
+          ch.state = CharacterState.IDLE;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+        }
+        ch.greetingTimer -= dt;
+        if (ch.greetingTimer <= 0) {
+          ch.greetingTimer = undefined;
+        }
+        continue;
+      }
+
       // Temporarily unblock own seat so character can pathfind to it
       this.withOwnSeatUnblocked(ch, () =>
         updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
       );
 
-      // Tick bubble timer for waiting bubbles
-      if (ch.bubbleType === 'waiting') {
+      // Printer beatdown effects: screen shake + nearby agent reactions
+      if (
+        ch.amenityVisit?.printerBeatdown &&
+        ch.amenityVisit.phase === 'using' &&
+        !ch.amenityVisit.beatdownShakeFired
+      ) {
+        ch.amenityVisit.beatdownShakeFired = true;
+        this.triggerScreenShake();
+        // Show alert bubbles on nearby characters
+        for (const other of this.characters.values()) {
+          if (other.id === ch.id) continue;
+          const dist = Math.abs(other.tileCol - ch.tileCol) + Math.abs(other.tileRow - ch.tileRow);
+          if (dist <= 8) {
+            this.showReactionBubble(other.id, 'alert');
+          }
+        }
+      }
+
+      // High-five: show heart bubbles when handoff visit reaches 'using' phase
+      if (ch.amenityVisit?.amenityType === 'HANDOFF' && ch.amenityVisit.phase === 'using') {
+        // Show heart once at the start of the using phase (timer is at max)
+        if (ch.amenityVisit.timer >= HANDOFF_VISIT_USE_SEC - 0.05) {
+          this.showReactionBubble(ch.id, 'heart');
+          // Find the colleague they're visiting and show heart on them too
+          for (const other of this.characters.values()) {
+            if (other.id === ch.id) continue;
+            const dist =
+              Math.abs(other.tileCol - ch.tileCol) + Math.abs(other.tileRow - ch.tileRow);
+            if (dist <= 2 && other.seatId) {
+              this.showReactionBubble(other.id, 'heart');
+              break;
+            }
+          }
+        }
+      }
+
+      // Random amenity visit trigger for idle agents at their desk
+      if (
+        !ch.isActive &&
+        !ch.isSubagent &&
+        ch.seatId &&
+        !ch.amenityVisit &&
+        !ch.whiteboardVisit &&
+        ch.state === CharacterState.IDLE &&
+        ch.wanderCount === 0 &&
+        Math.random() < AMENITY_VISIT_CHANCE * dt // per-frame chance scaled by dt
+      ) {
+        this.triggerAmenityVisit(ch.id);
+      }
+
+      // Random desk visit for idle agents (lower priority than amenity visits)
+      if (
+        !ch.isActive &&
+        !ch.isSubagent &&
+        ch.seatId &&
+        !ch.amenityVisit &&
+        !ch.whiteboardVisit &&
+        ch.state === CharacterState.IDLE &&
+        ch.wanderCount === 0 &&
+        Math.random() < DESK_VISIT_CHANCE * dt
+      ) {
+        this.triggerDeskVisit(ch.id);
+      }
+
+      // Rubber duck debugging: idle agent at desk occasionally has an epiphany
+      if (
+        !ch.isActive &&
+        !ch.isSubagent &&
+        ch.seatId &&
+        !ch.amenityVisit &&
+        !ch.whiteboardVisit &&
+        ch.state === CharacterState.IDLE &&
+        ch.wanderCount === 0 &&
+        !ch.bubbleType &&
+        Math.random() < RUBBER_DUCK_CHANCE * dt
+      ) {
+        this.triggerRubberDuck(ch.id);
+      }
+
+      // Tick bubble timer for timed bubbles (waiting + reactions, but not permission/sleep)
+      if (
+        ch.bubbleType &&
+        ch.bubbleType !== 'permission' &&
+        ch.bubbleType !== 'sleep' &&
+        ch.bubbleTimer > 0
+      ) {
         ch.bubbleTimer -= dt;
         if (ch.bubbleTimer <= 0) {
           ch.bubbleType = null;
           ch.bubbleTimer = 0;
         }
       }
+
+      // Permission impatience: after 15s, periodically show sweat bubble
+      if (ch.bubbleType === 'permission') {
+        ch.permissionTimer += dt;
+        if (ch.permissionTimer >= PERMISSION_IMPATIENT_SEC) {
+          // Every PERMISSION_SWEAT_INTERVAL_SEC after the threshold, briefly flash sweat
+          const elapsed = ch.permissionTimer - PERMISSION_IMPATIENT_SEC;
+          const prevInterval = Math.floor((elapsed - dt) / PERMISSION_SWEAT_INTERVAL_SEC);
+          const currInterval = Math.floor(elapsed / PERMISSION_SWEAT_INTERVAL_SEC);
+          if (currInterval > prevInterval) {
+            // Briefly show sweat, then restore permission bubble
+            ch.bubbleType = 'sweat';
+            ch.bubbleTimer = REACTION_BUBBLE_DURATION_SEC;
+            // The timer tick above will auto-clear sweat → null, then the extension
+            // will re-show permission on next check. But we want to restore it ourselves.
+            // Store that we need to restore permission after the sweat fades.
+            ch.permissionTimer = PERMISSION_IMPATIENT_SEC; // reset to retrigger later
+          }
+        }
+      } else {
+        ch.permissionTimer = 0;
+      }
+
+      // Track active turn duration
+      if (ch.isActive) {
+        ch.turnTimer += dt;
+      }
+
+      // Track idle time — show sleep bubble after extended inactivity
+      if (!ch.isActive && !ch.isSubagent && ch.seatId && !ch.amenityVisit && !ch.whiteboardVisit) {
+        ch.idleTimer += dt;
+        if (
+          ch.idleTimer >= SLEEP_IDLE_THRESHOLD_SEC &&
+          ch.bubbleType !== 'sleep' &&
+          ch.bubbleType !== 'permission'
+        ) {
+          this.showSleepBubble(ch.id);
+        }
+      } else {
+        ch.idleTimer = 0;
+      }
     }
+
+    // All-idle fun: when every non-sub-agent is idle for a while, trigger a group reaction
+    if (this.allIdleCooldown > 0) {
+      this.allIdleCooldown -= dt;
+    }
+    let allIdle = true;
+    let nonSubCount = 0;
+    for (const ch of this.characters.values()) {
+      if (ch.isSubagent || ch.matrixEffect) continue;
+      nonSubCount++;
+      if (ch.isActive || ch.amenityVisit || ch.whiteboardVisit) {
+        allIdle = false;
+        break;
+      }
+    }
+    if (allIdle && nonSubCount >= 2 && this.allIdleCooldown <= 0) {
+      this.allIdleTimer += dt;
+      if (this.allIdleTimer >= ALL_IDLE_THRESHOLD_SEC) {
+        this.allIdleTimer = 0;
+        this.allIdleCooldown = ALL_IDLE_FUN_COOLDOWN_SEC;
+        // 50% chance whiteboard argument, 50% wave of bubbles
+        if (Math.random() < 0.5) {
+          this.triggerWhiteboardArgument();
+        } else {
+          this.triggerAllIdleFun();
+        }
+      }
+    } else if (!allIdle) {
+      this.allIdleTimer = 0;
+    }
+
+    // Rare whiteboard argument (independent of all-idle)
+    if (nonSubCount >= 2 && Math.random() < WHITEBOARD_ARGUMENT_CHANCE * dt) {
+      this.triggerWhiteboardArgument();
+    }
+
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id);
@@ -730,10 +1170,33 @@ export class OfficeState {
 
   getDeskLabels(): Array<{ col: number; row: number; label: string }> {
     const labels: Array<{ col: number; row: number; label: string }> = [];
+
+    // Collect tiles that already have a furniture-based project label so we don't overlap
+    const labeledTiles = new Set<string>();
+
+    // First pass: labels from PlacedFurniture.projectLabel on desks
+    for (const item of this.layout.furniture) {
+      if (!item.projectLabel) continue;
+      const entry = getCatalogEntry(item.type);
+      if (!entry || !entry.isDesk) continue;
+      // Center the label on the desk footprint
+      const centerCol = item.col + Math.floor(entry.footprintW / 2);
+      const centerRow = item.row + Math.floor(entry.footprintH / 2);
+      labels.push({ col: centerCol, row: centerRow, label: item.projectLabel });
+      // Mark all footprint tiles as labeled
+      for (let dr = 0; dr < entry.footprintH; dr++) {
+        for (let dc = 0; dc < entry.footprintW; dc++) {
+          labeledTiles.add(`${item.col + dc},${item.row + dr}`);
+        }
+      }
+    }
+
+    // Second pass: labels from seated agents at workstations only
+    // Only show when the seat faces a desk AND is near a PC (real workstation, not meeting table)
     for (const [, ch] of this.characters) {
       if (ch.isSubagent || !ch.seatId) continue;
       const seat = this.seats.get(ch.seatId);
-      if (!seat) continue;
+      if (!seat || !seat.facesDesk) continue; // must face a desk with nearby PC
       const label = ch.projectPath ? ch.projectPath.split('/').pop() || '' : ch.folderName || '';
       if (!label) continue;
       // Place label on the desk tile (one tile in the facing direction from the seat)
@@ -744,7 +1207,11 @@ export class OfficeState {
         [Direction.RIGHT]: { dc: 1, dr: 0 },
       };
       const d = dirOffsets[seat.facingDir] || { dc: 0, dr: -1 };
-      labels.push({ col: seat.seatCol + d.dc, row: seat.seatRow + d.dr, label });
+      const deskCol = seat.seatCol + d.dc;
+      const deskRow = seat.seatRow + d.dr;
+      // Skip if this tile is already covered by a furniture project label
+      if (labeledTiles.has(`${deskCol},${deskRow}`)) continue;
+      labels.push({ col: deskCol, row: deskRow, label });
     }
     return labels;
   }
@@ -800,6 +1267,291 @@ export class OfficeState {
       ch.state = CharacterState.WALK;
       ch.frame = 0;
       ch.frameTimer = 0;
+    }
+  }
+
+  /** Get positions of amenity furniture (water cooler, coffee machine — NOT whiteboards) */
+  getAmenityPositions(): Array<{ col: number; row: number; type: string }> {
+    const results: Array<{ col: number; row: number; type: string }> = [];
+    for (const item of this.layout.furniture) {
+      const upper = item.type.toUpperCase();
+      if (AMENITY_FURNITURE_TYPES.some((t) => t !== 'WHITEBOARD' && upper.includes(t))) {
+        results.push({ col: item.col, row: item.row, type: item.type });
+      }
+    }
+    return results;
+  }
+
+  /** Trigger an amenity visit (water cooler or coffee run) for an idle agent */
+  triggerAmenityVisit(agentId: number): void {
+    const ch = this.characters.get(agentId);
+    if (!ch || !ch.seatId || ch.whiteboardVisit || ch.amenityVisit || ch.isSubagent) return;
+    if (ch.isActive) return; // only idle agents visit amenities
+
+    const amenities = this.getAmenityPositions();
+    if (amenities.length === 0) return;
+
+    // Pick a random amenity (not necessarily nearest — adds variety)
+    const amenity = amenities[Math.floor(Math.random() * amenities.length)];
+
+    // Stand one tile below the amenity (facing up toward it)
+    const targetCol = amenity.col;
+    const targetRow = amenity.row + 1;
+    const returnSeatId = ch.seatId;
+
+    // Roll the dice for printer Office Space easter egg
+    const isPrinterBeatdown =
+      amenity.type.startsWith('PRINTER') && Math.random() < PRINTER_BEATDOWN_CHANCE;
+
+    ch.amenityVisit = {
+      phase: 'walking_to',
+      amenityType: amenity.type,
+      targetCol,
+      targetRow,
+      returnSeatId,
+      timer: 0,
+      ...(isPrinterBeatdown ? { printerBeatdown: true } : {}),
+    };
+
+    // Release seat so character can walk freely
+    const seat = this.seats.get(ch.seatId);
+    if (seat) seat.assigned = false;
+    ch.seatId = null;
+
+    // Start walking
+    const path = this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, this.tileMap, this.blockedTiles),
+    );
+    if (path.length > 0) {
+      ch.path = path;
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    } else {
+      // Can't path — abort
+      ch.amenityVisit = undefined;
+      if (seat) seat.assigned = true;
+      ch.seatId = returnSeatId;
+    }
+  }
+
+  /** Trigger a desk visit: idle agent walks to another idle same-project agent's desk */
+  triggerDeskVisit(agentId: number): void {
+    const ch = this.characters.get(agentId);
+    if (!ch || !ch.seatId || ch.whiteboardVisit || ch.amenityVisit || ch.isSubagent) return;
+    if (ch.isActive) return;
+
+    // Find another idle, seated, non-sub-agent on the same project
+    const myProject = ch.projectPath;
+    const candidates: Character[] = [];
+    for (const [, other] of this.characters) {
+      if (other.id === agentId || other.isSubagent || !other.seatId) continue;
+      if (other.isActive || other.whiteboardVisit || other.amenityVisit) continue;
+      // Same project check via last path segment
+      if (myProject && other.projectPath) {
+        const myFolder = myProject.split('/').pop()?.toLowerCase();
+        const otherFolder = other.projectPath.split('/').pop()?.toLowerCase();
+        if (myFolder !== otherFolder) continue;
+      } else {
+        continue; // skip if no project info
+      }
+      candidates.push(other);
+    }
+    if (candidates.length === 0) return;
+
+    // Pick random candidate
+    const target = candidates[Math.floor(Math.random() * candidates.length)];
+    const targetSeat = this.seats.get(target.seatId!);
+    if (!targetSeat) return;
+
+    // Walk to one tile adjacent to the target's seat (below them, facing up)
+    const targetCol = targetSeat.seatCol;
+    const targetRow = targetSeat.seatRow + 1;
+
+    // Compute facing direction from walk-to position toward the target agent
+    const facingDir = directionToward(targetCol, targetRow, targetSeat.seatCol, targetSeat.seatRow);
+
+    const returnSeatId = ch.seatId;
+
+    ch.amenityVisit = {
+      phase: 'walking_to',
+      amenityType: 'DESK_VISIT',
+      targetCol,
+      targetRow,
+      returnSeatId,
+      timer: 0,
+      facingDir,
+    };
+
+    // Release seat so character can walk freely
+    const seat = this.seats.get(ch.seatId);
+    if (seat) seat.assigned = false;
+    ch.seatId = null;
+
+    const path = this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, this.tileMap, this.blockedTiles),
+    );
+    if (path.length > 0) {
+      ch.path = path;
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    } else {
+      // Can't path — abort
+      ch.amenityVisit = undefined;
+      if (seat) seat.assigned = true;
+      ch.seatId = returnSeatId;
+    }
+  }
+
+  /** Rubber duck debugging: agent briefly shows confused then idea bubble at their desk */
+  triggerRubberDuck(agentId: number): void {
+    const ch = this.characters.get(agentId);
+    if (!ch || !ch.seatId || ch.amenityVisit || ch.whiteboardVisit || ch.isSubagent) return;
+    if (ch.isActive) return;
+
+    // Show confused bubble, then after a delay show idea
+    this.showReactionBubble(agentId, 'confused');
+    // Schedule idea bubble after stare duration
+    setTimeout(() => {
+      const c = this.characters.get(agentId);
+      if (c && !c.isActive && c.bubbleType !== 'permission') {
+        this.showReactionBubble(agentId, 'idea');
+      }
+    }, RUBBER_DUCK_STARE_SEC * 1000);
+  }
+
+  /** Whiteboard argument: two idle agents take turns at the whiteboard with ! bubbles */
+  triggerWhiteboardArgument(): void {
+    // Find two idle, non-sub-agent, seated characters
+    const candidates: Character[] = [];
+    for (const ch of this.characters.values()) {
+      if (
+        !ch.isActive &&
+        !ch.isSubagent &&
+        ch.seatId &&
+        !ch.amenityVisit &&
+        !ch.whiteboardVisit &&
+        ch.state === CharacterState.IDLE &&
+        ch.wanderCount === 0
+      ) {
+        candidates.push(ch);
+      }
+    }
+    if (candidates.length < 2) return;
+
+    // Pick two random agents
+    const shuffled = candidates.sort(() => Math.random() - 0.5);
+    const agent1 = shuffled[0];
+    const agent2 = shuffled[1];
+
+    // Send both to the whiteboard — they'll naturally go to the same one
+    this.triggerWhiteboardVisit(agent1.id);
+    // Slight delay so they arrive staggered
+    setTimeout(() => {
+      const ch2 = this.characters.get(agent2.id);
+      if (ch2 && !ch2.isActive && !ch2.whiteboardVisit && !ch2.amenityVisit) {
+        this.triggerWhiteboardVisit(agent2.id);
+        // Show alert bubbles on both when second arrives
+        setTimeout(() => {
+          this.showReactionBubble(agent1.id, 'alert');
+          this.showReactionBubble(agent2.id, 'alert');
+        }, 3000);
+      }
+    }, 1500);
+  }
+
+  /** All-idle fun: agents react when everyone is idle for too long */
+  triggerAllIdleFun(): void {
+    const agents: Character[] = [];
+    for (const ch of this.characters.values()) {
+      if (!ch.isSubagent) agents.push(ch);
+    }
+    if (agents.length < 2) return;
+
+    // Random fun activity: wave of reaction bubbles across all agents
+    const bubbleTypes: Array<'heart' | 'idea' | 'confused' | 'alert'> = [
+      'heart',
+      'idea',
+      'confused',
+      'alert',
+    ];
+    const chosenBubble = bubbleTypes[Math.floor(Math.random() * bubbleTypes.length)];
+
+    // Stagger the bubbles for a wave effect
+    agents.forEach((ch, i) => {
+      setTimeout(() => {
+        if (!ch.isActive) {
+          this.showReactionBubble(ch.id, chosenBubble);
+        }
+      }, i * 300);
+    });
+  }
+
+  /** Trigger a handoff visit: agent walks to the nearest other agent's desk, pauses, then returns */
+  triggerHandoffVisit(closerAgentId: number): void {
+    const ch = this.characters.get(closerAgentId);
+    if (!ch || !ch.seatId || ch.whiteboardVisit || ch.amenityVisit) return;
+
+    // Find nearest OTHER non-sub-agent that's seated
+    let bestTarget: Character | null = null;
+    let bestDist = Infinity;
+    for (const [, other] of this.characters) {
+      if (other.id === closerAgentId || other.isSubagent || !other.seatId) continue;
+      if (other.matrixEffect === 'despawn') continue;
+      const d = Math.abs(ch.tileCol - other.tileCol) + Math.abs(ch.tileRow - other.tileRow);
+      if (d < bestDist) {
+        bestDist = d;
+        bestTarget = other;
+      }
+    }
+    if (!bestTarget || !bestTarget.seatId) return;
+
+    // Get the target agent's seat
+    const targetSeat = this.seats.get(bestTarget.seatId);
+    if (!targetSeat) return;
+
+    // Stand one tile below the target's seat (facing up toward them)
+    const targetCol = targetSeat.seatCol;
+    const targetRow = targetSeat.seatRow + 1;
+
+    // Compute facing direction from walk-to position toward the target agent
+    const facingDir = directionToward(targetCol, targetRow, targetSeat.seatCol, targetSeat.seatRow);
+
+    const returnSeatId = ch.seatId;
+
+    ch.amenityVisit = {
+      phase: 'walking_to',
+      amenityType: 'HANDOFF',
+      targetCol,
+      targetRow,
+      returnSeatId,
+      timer: 0,
+      facingDir,
+    };
+
+    // Release seat so character can walk freely
+    const seat = this.seats.get(ch.seatId);
+    if (seat) seat.assigned = false;
+    ch.seatId = null;
+
+    // Path to target
+    const path = this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, this.tileMap, this.blockedTiles),
+    );
+    if (path.length > 0) {
+      ch.path = path;
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    } else {
+      // Can't path — abort
+      ch.amenityVisit = undefined;
+      if (seat) seat.assigned = true;
+      ch.seatId = returnSeatId;
     }
   }
 

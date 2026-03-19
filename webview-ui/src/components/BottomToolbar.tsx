@@ -12,6 +12,8 @@ interface BottomToolbarProps {
   onToggleDebugMode: () => void;
   alwaysShowOverlay: boolean;
   onToggleAlwaysShowOverlay: () => void;
+  showActiveLabels: boolean;
+  onToggleShowActiveLabels: () => void;
   workspaceFolders: WorkspaceFolder[];
   isStandalone?: boolean;
 }
@@ -55,6 +57,8 @@ export function BottomToolbar({
   onToggleDebugMode,
   alwaysShowOverlay,
   onToggleAlwaysShowOverlay,
+  showActiveLabels,
+  onToggleShowActiveLabels,
   workspaceFolders,
   isStandalone,
 }: BottomToolbarProps) {
@@ -195,6 +199,8 @@ export function BottomToolbar({
           onToggleDebugMode={onToggleDebugMode}
           alwaysShowOverlay={alwaysShowOverlay}
           onToggleAlwaysShowOverlay={onToggleAlwaysShowOverlay}
+          showActiveLabels={showActiveLabels}
+          onToggleShowActiveLabels={onToggleShowActiveLabels}
         />
       </div>
     </div>

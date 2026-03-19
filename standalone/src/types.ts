@@ -21,7 +21,7 @@ export interface AgentState {
   tty?: string | null;
   characterId?: number; // 0-5 from config, or undefined for auto-assigned
   hasBeads?: boolean;
-  beadsRoot?: string; // directory containing .beads/ (may be a parent of projectPath)
+  beadsRoots?: string[]; // directories containing .beads/ (closest first, walking up from projectPath)
 }
 
 export interface TodoItem {

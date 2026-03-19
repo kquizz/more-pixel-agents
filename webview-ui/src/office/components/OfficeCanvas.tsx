@@ -52,6 +52,7 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   todos?: Array<{ status: string }>;
   onWhiteboardClick?: () => void;
+  isDebugMode?: boolean;
 }
 
 export function OfficeCanvas({
@@ -72,6 +73,7 @@ export function OfficeCanvas({
   panRef,
   todos,
   onWhiteboardClick,
+  isDebugMode,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -278,8 +280,8 @@ export function OfficeCanvas({
           officeState.furniture,
           officeState.getCharacters(),
           zoom,
-          panRef.current.x,
-          panRef.current.y,
+          panRef.current.x + officeState.screenShakeOffset.x * zoom,
+          panRef.current.y + officeState.screenShakeOffset.y * zoom,
           selectionRender,
           editorRender,
           officeState.getLayout().tileColors,
@@ -288,6 +290,7 @@ export function OfficeCanvas({
           officeState.getDeskLabels(),
           officeState.getWhiteboardPositions(),
           todos,
+          isDebugMode ? officeState.seats : undefined,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 

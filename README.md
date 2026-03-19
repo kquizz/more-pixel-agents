@@ -8,7 +8,7 @@ I loved the original but I'm too impatient to wait for features to land upstream
 
 This fork runs as a **standalone browser app** — no VS Code required. Just `npm run standalone` and open `localhost:3100`. It auto-discovers all your active Claude Code sessions across your machine.
 
-### Features Added
+### Core Features
 
 **Standalone Browser Mode**
 - Runs at `localhost:3100` as a regular web app
@@ -18,34 +18,83 @@ This fork runs as a **standalone browser app** — no VS Code required. Just `np
 **Click-to-Focus Terminal**
 - Click any agent to switch to its Ghostty/iTerm2/Terminal.app/VS Code tab
 - Uses process tree detection + AppleScript to find and focus the right terminal
-- Ghostty tab switching uses a TTY marker approach for reliable tab identification
 
-**Deterministic Character Assignment**
-- Same project folder always gets the same character sprite (hashed from path)
-- Override via config at `~/.config/more-pixel-agents/config.json`
+**Smart Desk Assignment**
+- Desks can be labeled with a project name (e.g. "tesla-site") in the layout editor
+- Agents automatically sit at desks matching their project
+- When an agent switches projects via `cd`, they walk to the correct desk
+- Active agents prefer desks near PCs; sub-agents prefer couches
 
-**Smart Seat Assignment**
-- Active agents sit at computer desks (seats closest to PCs)
-- Sub-agents (mini characters) sit on couches
-- Stale sessions show idle behavior (wandering, not typing)
+**Diverse Character Sprites**
+- Each agent gets a randomly assigned diverse appearance
+- Two agents on the same project look different — the desk carries the project identity, not the sprite
+- Override via config at `~/.config/more-pixel-agents/config.json` if you want specific assignments
 
-**Mini Sub-Agent Characters**
+### Agent Interactions
+
+**Sub-Agent Characters**
 - When Claude spawns sub-agents (Agent tool), mini 60% scale characters appear
-- They sit on couches near the parent agent
+- Sub-agents sit on couches with laptops on their laps
+- Parent and sub-agent face each other briefly on spawn (greeting animation)
 - Disappear when the sub-agent task completes
 
+**Ambient Life**
+- Idle agents occasionally visit the water cooler or coffee machine
+- Idle agents on the same project visit each other's desks for a chat
+- When an agent completes a bead, they walk to the nearest colleague's desk (handoff animation)
+- Agents walk to the whiteboard when completing todos
+
+**Notification Sounds**
+- Task completion ding (descending C6-G5)
+- Idle tone when agent's turn ends (low C4)
+- Waiting chime when agent needs attention (ascending E5-E6)
+- Ambient typing clicks and footstep sounds (very subtle)
+- All sounds respect the enable/disable toggle in Settings
+
+**Day/Night Cycle**
+- Subtle dark blue overlay tied to the system clock
+- Sunrise (6-8 AM), full daylight, sunset (6-9 PM), night
+
+### Canvas Overlays
+
 **Hover Tooltips**
-- Mouse over any agent to see project path, terminal app, and status
-- Sub-agents show parent project info + "sub-agent" label
+- Mouse over any agent to see terminal app, current tool, and project folder
+
+**Tool Thought Bubbles**
+- Active agents show their current tool name (Read, Edit, Bash, etc.) in a small bubble above their head
+- Automatically hidden when permission or waiting bubbles are showing
 
 **Desk Labels**
-- Project names rendered on desk surfaces so you can see which project each workstation is running
+- Project names rendered on desk surfaces from the layout editor's project label
+- Agents without a labeled desk show their project folder name
 
-**Kanban Whiteboard** (not fully tested yet)
-- Detects TaskCreate/TaskUpdate tool uses from JSONL transcripts
-- Colored blocks on the whiteboard: green (done), yellow (in progress), grey (pending)
-- Click the whiteboard to open a full kanban overlay
-- Agents walk to the whiteboard when they complete a todo
+### Kanban Board
+
+**BEADS Integration**
+- Detects [BEADS](https://github.com/beads-project/beads) distributed issue tracker from `.beads/` directories
+- Discovers all `.beads` instances — walks up the directory tree AND scans 2 levels of child directories
+- Late discovery: if terminal info arrives after session adoption, re-scans for beads
+
+**Kanban Overlay**
+- Click the whiteboard to open the full kanban board
+- Three columns: Pending, In Progress, Done
+- Click any card to expand full bead details: ID, description, priority (color-coded P0-P4), assignee, dependency/blocker counts, dates, and close reason
+- Priority and type tags shown inline on collapsed cards
+- "Clear" button in the Done column to dismiss completed items
+- Cleared state resets on page reload
+
+### Layout Editor
+
+**Furniture Catalog**
+- Water cooler, coffee machine (functional — agents visit them)
+- Fish tank (animated 2-frame swimming fish)
+- Rug (fully walkable/placeable floor overlay)
+- Coat rack, printer, plants, bookshelves, paintings, and more
+- Project label text input when selecting a desk
+
+**Office Templates**
+- 4 pre-built layouts selectable from Settings: Startup, Enterprise, Coworking, Gaming Studio
+- Each template includes desks, seating, amenities, and decorations
 
 ## Quick Start
 
@@ -81,7 +130,7 @@ Optional config file at `~/.config/more-pixel-agents/config.json`:
 ```
 
 - `port` — server port (default 3100)
-- `folderCharacters` — map project paths to character IDs (0-5) for specific assignments
+- `folderCharacters` — map project paths to character IDs (0-5) for specific sprite assignments
 - `staleTimeout` — minutes before inactive sessions are removed (default 30)
 
 ## Credits

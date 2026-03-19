@@ -1,8 +1,21 @@
 import { adjustSprite } from '../colorize.js';
 import type { Direction, FloorColor, SpriteData } from '../types.js';
 import { Direction as Dir } from '../types.js';
+import beerBottleData from './beer-bottle.json';
+import bubbleAlertData from './bubble-alert.json';
+import bubbleConfusedData from './bubble-confused.json';
+import bubbleHandData from './bubble-hand.json';
+import bubbleHeartData from './bubble-heart.json';
+import bubbleIdeaData from './bubble-idea.json';
 import bubblePermissionData from './bubble-permission.json';
+import bubbleSleepData from './bubble-sleep.json';
+import bubbleSweatData from './bubble-sweat.json';
 import bubbleWaitingData from './bubble-waiting.json';
+import coffeeMachineData from './coffee-machine.json';
+import coffeeMugData from './coffee-mug.json';
+import laptopData from './laptop.json';
+import sodaCanData from './soda-can.json';
+import waterCoolerData from './water-cooler.json';
 
 // ── Speech Bubble Sprites ───────────────────────────────────────
 
@@ -15,11 +28,46 @@ function resolveBubbleSprite(data: BubbleSpriteJson): SpriteData {
   return data.pixels.map((row) => row.map((key) => data.palette[key] ?? key));
 }
 
-/** Permission bubble: white square with "..." in amber, and a tail pointer (11x13) */
-export const BUBBLE_PERMISSION_SPRITE: SpriteData = resolveBubbleSprite(bubblePermissionData);
+/** Permission bubble: raised hand (asking for approval) (11x13) */
+export const BUBBLE_PERMISSION_SPRITE: SpriteData = resolveBubbleSprite(bubbleHandData);
+
+/** Permission bubble (legacy): white square with "..." in amber (11x13) */
+export const BUBBLE_PERMISSION_DOTS_SPRITE: SpriteData = resolveBubbleSprite(bubblePermissionData);
 
 /** Waiting bubble: white square with green checkmark, and a tail pointer (11x13) */
 export const BUBBLE_WAITING_SPRITE: SpriteData = resolveBubbleSprite(bubbleWaitingData);
+
+/** Sleep bubble: white square with 'zzZ' in blue (11x13) */
+export const BUBBLE_SLEEP_SPRITE: SpriteData = resolveBubbleSprite(bubbleSleepData);
+
+/** Alert bubble: white square with red '!' (11x13) */
+export const BUBBLE_ALERT_SPRITE: SpriteData = resolveBubbleSprite(bubbleAlertData);
+
+/** Confused bubble: white square with purple '?' (11x13) */
+export const BUBBLE_CONFUSED_SPRITE: SpriteData = resolveBubbleSprite(bubbleConfusedData);
+
+/** Sweat/stress bubble: white square with blue sweat drop (11x13) */
+export const BUBBLE_SWEAT_SPRITE: SpriteData = resolveBubbleSprite(bubbleSweatData);
+
+/** Idea/lightbulb bubble: white square with yellow lightbulb (11x13) */
+export const BUBBLE_IDEA_SPRITE: SpriteData = resolveBubbleSprite(bubbleIdeaData);
+
+/** Heart/happy bubble: white square with red heart (11x13) */
+export const BUBBLE_HEART_SPRITE: SpriteData = resolveBubbleSprite(bubbleHeartData);
+
+/** Small open laptop sprite for sub-agents (10x7) */
+export const LAPTOP_SPRITE: SpriteData = resolveBubbleSprite(laptopData);
+
+/** Water cooler sprite for office break area (10x16) */
+export const WATER_COOLER_SPRITE: SpriteData = resolveBubbleSprite(waterCoolerData);
+
+/** Coffee machine sprite for office break area (10x12) */
+export const COFFEE_MACHINE_SPRITE: SpriteData = resolveBubbleSprite(coffeeMachineData);
+
+/** Time-based desk drink sprites */
+export const COFFEE_MUG_SPRITE: SpriteData = resolveBubbleSprite(coffeeMugData);
+export const SODA_CAN_SPRITE: SpriteData = resolveBubbleSprite(sodaCanData);
+export const BEER_BOTTLE_SPRITE: SpriteData = resolveBubbleSprite(beerBottleData);
 
 // ════════════════════════════════════════════════════════════════
 // Loaded character sprites (from PNG assets)

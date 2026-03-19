@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getColorizedSprite } from '../colorize.js';
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js';
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js';
-import { getWallSetCount, getWallSetPreviewSprite } from '../wallTiles.js';
 import {
   buildDynamicCatalog,
   getActiveCategories,
@@ -12,6 +11,7 @@ import {
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import type { FloorColor, TileType as TileTypeVal } from '../types.js';
 import { EditTool } from '../types.js';
+import { getWallSetCount, getWallSetPreviewSprite } from '../wallTiles.js';
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
@@ -53,6 +53,8 @@ interface EditorToolbarProps {
   selectedFurnitureType: string;
   selectedFurnitureUid: string | null;
   selectedFurnitureColor: FloorColor | null;
+  selectedFurnitureProjectLabel: string;
+  selectedFurnitureIsDesk: boolean;
   floorColor: FloorColor;
   wallColor: FloorColor;
   selectedWallSet: number;
@@ -62,6 +64,7 @@ interface EditorToolbarProps {
   onWallColorChange: (color: FloorColor) => void;
   onWallSetChange: (setIndex: number) => void;
   onSelectedFurnitureColorChange: (color: FloorColor | null) => void;
+  onSelectedFurnitureProjectLabel: (label: string) => void;
   onFurnitureTypeChange: (type: string) => void;
   loadedAssets?: LoadedAssetData;
 }
@@ -235,6 +238,8 @@ export function EditorToolbar({
   selectedFurnitureType,
   selectedFurnitureUid,
   selectedFurnitureColor,
+  selectedFurnitureProjectLabel,
+  selectedFurnitureIsDesk,
   floorColor,
   wallColor,
   selectedWallSet,
@@ -244,6 +249,7 @@ export function EditorToolbar({
   onWallColorChange,
   onWallSetChange,
   onSelectedFurnitureColorChange,
+  onSelectedFurnitureProjectLabel,
   onFurnitureTypeChange,
   loadedAssets,
 }: EditorToolbarProps) {
@@ -620,6 +626,31 @@ export function EditorToolbar({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Project label input — shows when a desk is selected */}
+      {selectedFurnitureUid && selectedFurnitureIsDesk && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+          <span style={{ fontSize: '20px', color: '#999', flexShrink: 0 }}>Project</span>
+          <input
+            type="text"
+            value={selectedFurnitureProjectLabel}
+            onChange={(e) => onSelectedFurnitureProjectLabel(e.target.value)}
+            placeholder="e.g. tesla-site"
+            style={{
+              flex: 1,
+              background: '#181828',
+              color: '#cdd6f4',
+              border: '2px solid #4a4a6a',
+              borderRadius: 0,
+              padding: '3px 6px',
+              fontSize: '20px',
+              fontFamily: '"Courier New", monospace',
+              outline: 'none',
+              minWidth: 0,
+            }}
+          />
         </div>
       )}
 

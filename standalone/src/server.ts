@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 
 import { loadAllAssets } from './assetLoader.js';
-import { findBeadsRoot, pollBeads } from './beadsPoller.js';
+import { findAllBeadsRoots, pollAllBeads } from './beadsPoller.js';
 import { getConfig, loadConfig, resolveCharacterId, watchConfig } from './config.js';
 import {
   DEFAULT_PORT,
@@ -25,6 +25,7 @@ import {
   cancelPermissionTimer,
   cancelWaitingTimer,
   clearAgentActivity,
+  detectProjectSwitch,
   processTranscriptLine,
 } from './transcriptParser.js';
 import type { AgentState } from './types.js';
@@ -192,6 +193,29 @@ function updateTerminalInfo(): void {
             terminalApp: info.terminalApp,
             projectPath: info.cwd,
           });
+          // Re-discover beads now that we have the real cwd
+          if (!agent.hasBeads) {
+            const newRoots = findAllBeadsRoots(info.cwd);
+            if (newRoots.length > 0) {
+              agent.hasBeads = true;
+              agent.beadsRoots = newRoots;
+              console.log(
+                `[Agent ${agent.id}] BEADS detected (late) at ${newRoots.join(', ')} (project: ${info.cwd})`,
+              );
+              const issues = pollAllBeads(newRoots);
+              if (issues.length > 0) {
+                const todoMap = new Map<string, { subject: string; status: string }>();
+                for (const issue of issues) {
+                  todoMap.set(issue.taskId, { subject: issue.subject, status: issue.status });
+                }
+                agentTodos.set(agent.id, todoMap);
+                broadcast({
+                  type: 'todosLoaded',
+                  todos: { [agent.id]: issues },
+                });
+              }
+            }
+          }
           break;
         }
       }
@@ -228,9 +252,9 @@ function handleTodoBroadcast(msg: Record<string, unknown>): void {
   } else if (msg.type === 'beadsPollRequested') {
     const agentId = msg.agentId as number;
     const agent = agents.get(agentId);
-    if (agent?.hasBeads && agent.beadsRoot) {
+    if (agent?.hasBeads && agent.beadsRoots) {
       const prevTodos = agentTodos.get(agentId);
-      const issues = pollBeads(agent.beadsRoot);
+      const issues = pollAllBeads(agent.beadsRoots);
 
       // Detect newly closed issues (for whiteboard animation)
       if (prevTodos) {
@@ -371,6 +395,31 @@ function readNewLines(agentId: number): void {
     for (const line of lines) {
       if (!line.trim()) continue;
       processTranscriptLine(agentId, line, agents, waitingTimers, permissionTimers, broadcast);
+
+      // Check for project switches via cd commands in Bash tool_use
+      try {
+        const record = JSON.parse(line);
+        if (record.type === 'assistant' && Array.isArray(record.message?.content)) {
+          for (const block of record.message.content) {
+            if (block.type === 'tool_use' && block.name === 'Bash' && block.input?.command) {
+              const currentPath = agent.projectPath;
+              if (currentPath) {
+                const newPath = detectProjectSwitch(block.input.command as string, currentPath);
+                if (newPath) {
+                  console.log(
+                    `[Agent ${agentId}] Project switch detected: ${currentPath} -> ${newPath}`,
+                  );
+                  agent.projectPath = newPath;
+                  agent.folderName = path.basename(newPath);
+                  broadcast({ type: 'projectSwitch', id: agentId, projectPath: newPath });
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore parse errors — processTranscriptLine already handles malformed lines
+      }
     }
   } catch {
     // Read error - file may have been removed
@@ -446,26 +495,15 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     }
   }
 
-  // Resolve character ID from config
-  // Character assignment: config takes priority, otherwise deterministic hash of folder path
+  // Resolve character ID from config override only.
+  // If no config override, let the webview assign a diverse palette via pickDiversePalette().
   const configCharId = projectPath ? resolveCharacterId(projectPath) : -1;
-  let characterId: number;
-  if (configCharId >= 0) {
-    characterId = configCharId;
-  } else {
-    // Hash the project dir name so the same folder always gets the same character
-    const dirName = path.basename(projectDir);
-    let hash = 0;
-    for (let i = 0; i < dirName.length; i++) {
-      hash = ((hash << 5) - hash + dirName.charCodeAt(i)) | 0;
-    }
-    characterId = ((hash % 6) + 6) % 6;
-  }
+  const characterId = configCharId >= 0 ? configCharId : -1;
 
   // Check if project (or a parent directory) has a .beads/ directory
   const resolvedProjectPath = termInfo?.cwd ?? projectPath;
-  const beadsRoot = resolvedProjectPath ? findBeadsRoot(resolvedProjectPath) : null;
-  const hasBeads = beadsRoot !== null;
+  const beadsRoots = resolvedProjectPath ? findAllBeadsRoots(resolvedProjectPath) : [];
+  const hasBeads = beadsRoots.length > 0;
 
   const agent: AgentState = {
     id,
@@ -490,7 +528,7 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     tty: termInfo?.tty ?? null,
     characterId,
     hasBeads,
-    beadsRoot: beadsRoot ?? undefined,
+    beadsRoots: beadsRoots.length > 0 ? beadsRoots : undefined,
   };
 
   // Skip to near end of file - only read recent activity
@@ -504,7 +542,9 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
 
   agents.set(id, agent);
   if (hasBeads) {
-    console.log(`[Agent ${id}] BEADS detected at ${beadsRoot} (project: ${resolvedProjectPath})`);
+    console.log(
+      `[Agent ${id}] BEADS detected at ${beadsRoots.join(', ')} (project: ${resolvedProjectPath})`,
+    );
   }
   console.log(`[Agent ${id}] Adopted session in ${projectName}: ${path.basename(filePath)}`);
   broadcast({
@@ -513,7 +553,7 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
     folderName: projectName,
     terminalApp: agent.terminalApp,
     projectPath: agent.projectPath,
-    characterId: agent.characterId,
+    characterId: agent.characterId >= 0 ? agent.characterId : undefined,
   });
 
   // If no active terminal detected, start as idle (don't show typing animation)
@@ -525,8 +565,8 @@ function adoptJsonlFile(filePath: string, projectDir: string): void {
   readNewLines(id);
 
   // Initial BEADS poll
-  if (agent.hasBeads && agent.beadsRoot) {
-    const issues = pollBeads(agent.beadsRoot);
+  if (agent.hasBeads && agent.beadsRoots) {
+    const issues = pollAllBeads(agent.beadsRoots);
     if (issues.length > 0) {
       const todoMap = new Map<string, { subject: string; status: string }>();
       for (const issue of issues) {
@@ -599,7 +639,7 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
   send({ type: 'furnitureAssetsLoaded', catalog: assets.catalog, sprites: assets.sprites });
 
   // Send settings
-  send({ type: 'settingsLoaded', soundEnabled: true });
+  send({ type: 'settingsLoaded', soundEnabled: false });
 
   // Send standalone mode flag
   send({ type: 'standaloneMode', enabled: true });
@@ -614,7 +654,8 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
     if (agent.folderName) folderNames[id] = agent.folderName;
     if (agent.terminalApp) terminalApps[id] = agent.terminalApp;
     if (agent.projectPath) projectPaths[id] = agent.projectPath;
-    if (agent.characterId !== undefined) characterIds[id] = agent.characterId;
+    if (agent.characterId !== undefined && agent.characterId >= 0)
+      characterIds[id] = agent.characterId;
   }
   send({
     type: 'existingAgents',
@@ -628,8 +669,8 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
 
   // Re-poll BEADS for all agents on client connect (ensures fresh data)
   for (const [agentId, agent] of agents) {
-    if (agent.hasBeads && agent.beadsRoot) {
-      const issues = pollBeads(agent.beadsRoot);
+    if (agent.hasBeads && agent.beadsRoots) {
+      const issues = pollAllBeads(agent.beadsRoots);
       const todoMap = new Map<string, { subject: string; status: string }>();
       for (const issue of issues) {
         todoMap.set(issue.taskId, { subject: issue.subject, status: issue.status });
@@ -840,6 +881,12 @@ function handleClientMessage(
 ): void {
   if (msg.type === 'webviewReady') {
     // Already handled on connection
+  } else if (msg.type === 'applyTemplateLayout') {
+    const layout = msg.layout as Record<string, unknown>;
+    const templateName = (msg.templateName as string) || 'Template';
+    writeLayoutToFile(layout);
+    broadcast({ type: 'layoutLoaded', layout });
+    console.log(`[Server] Applied layout template: ${templateName}`);
   } else if (msg.type === 'saveLayout') {
     writeLayoutToFile(msg.layout as Record<string, unknown>);
   } else if (msg.type === 'saveAgentSeats') {

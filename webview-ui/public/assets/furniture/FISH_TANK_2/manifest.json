@@ -1,0 +1,15 @@
+{
+  "id": "FISH_TANK_2",
+  "name": "Fish Tank",
+  "category": "decor",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "width": 32,
+  "height": 32,
+  "footprintW": 2,
+  "footprintH": 2,
+  "animationGroup": "FISH_TANK",
+  "frame": 1
+}

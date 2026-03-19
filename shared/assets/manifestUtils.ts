@@ -50,6 +50,9 @@ export interface FurnitureManifest {
   groupType?: string;
   rotationScheme?: string;
   members?: ManifestNode[];
+  // Animation (standalone animated assets like FISH_TANK):
+  animationGroup?: string;
+  frame?: number;
 }
 
 export interface InheritedProps {

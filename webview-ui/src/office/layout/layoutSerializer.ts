@@ -163,14 +163,19 @@ function orientationToFacing(orientation: string): Direction {
 export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   const seats = new Map<string, Seat>();
 
-  // Build set of all desk tiles (used for facing direction)
+  // Build set of all desk tiles (used for facing direction) and map to project labels
   const deskTiles = new Set<string>();
+  const deskTileLabels = new Map<string, string>(); // tile key → projectLabel
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type);
     if (!entry || !entry.isDesk) continue;
     for (let dr = 0; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {
-        deskTiles.add(`${item.col + dc},${item.row + dr}`);
+        const key = `${item.col + dc},${item.row + dr}`;
+        deskTiles.add(key);
+        if (item.projectLabel) {
+          deskTileLabels.set(key, item.projectLabel);
+        }
       }
     }
   }
@@ -194,32 +199,54 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     { dc: 1, dr: 0, facing: Direction.RIGHT }, // desk is right of chair → face RIGHT
   ];
 
-  // For each chair, every footprint tile becomes a seat.
-  // Multi-tile chairs (e.g. 2-tile couches) produce multiple seats.
+  // For each chair, only the non-background footprint tiles become seats.
+  // Background rows (top N rows) are the chair back sticking up — not sittable.
+  // The remaining bottom rows are where the character actually sits.
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type);
     if (!entry || entry.category !== 'chairs') continue;
 
+    const bgRows = entry.backgroundTiles || 0;
     let seatCount = 0;
-    for (let dr = 0; dr < entry.footprintH; dr++) {
+    for (let dr = bgRows; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {
         const tileCol = item.col + dc;
         const tileRow = item.row + dr;
 
         // Determine facing direction:
-        // 1) Chair orientation takes priority
-        // 2) Adjacent desk direction
+        // 1) Adjacent desk direction (highest priority — face your workstation)
+        // 2) Chair orientation as fallback
         // 3) Default forward (DOWN)
         let facingDir: Direction = Direction.DOWN;
+        let foundAdjacentDesk = false;
         let facesDesk = false;
+        let projectLabel: string | undefined;
 
-        // Check adjacent tiles for desks (for facing direction)
+        // Check adjacent tiles for desks (for facing direction + project label)
         for (const d of dirs) {
-          if (deskTiles.has(`${tileCol + d.dc},${tileRow + d.dr}`)) {
-            if (!entry.orientation) {
-              facingDir = d.facing;
+          const adjKey = `${tileCol + d.dc},${tileRow + d.dr}`;
+          if (deskTiles.has(adjKey)) {
+            facingDir = d.facing;
+            foundAdjacentDesk = true;
+            if (!projectLabel) {
+              projectLabel = deskTileLabels.get(adjKey);
             }
             break;
+          }
+        }
+
+        // If no adjacent desk had a label, also check PC-range desks (within 3 tiles)
+        if (!projectLabel) {
+          for (let dy = -3; dy <= 3; dy++) {
+            for (let dx = -3; dx <= 3; dx++) {
+              const nearKey = `${tileCol + dx},${tileRow + dy}`;
+              const label = deskTileLabels.get(nearKey);
+              if (label) {
+                projectLabel = label;
+                break;
+              }
+            }
+            if (projectLabel) break;
           }
         }
 
@@ -235,8 +262,8 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
         }
         if (pcDistance <= 5) facesDesk = true;
 
-        // Apply chair orientation if specified
-        if (entry.orientation) {
+        // Apply chair orientation only as fallback when no adjacent desk found
+        if (!foundAdjacentDesk && entry.orientation) {
           facingDir = orientationToFacing(entry.orientation);
         }
 
@@ -249,6 +276,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           facingDir,
           ...(facesDesk ? { facesDesk: true } : {}),
           ...(pcDistance < Infinity ? { pcDistance } : {}),
+          ...(projectLabel ? { projectLabel } : {}),
           assigned: false,
         });
         seatCount++;

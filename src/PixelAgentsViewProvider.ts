@@ -131,7 +131,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           this.persistAgents,
         );
         // Send persisted settings to webview
-        const soundEnabled = this.context.globalState.get<boolean>(GLOBAL_KEY_SOUND_ENABLED, true);
+        const soundEnabled = this.context.globalState.get<boolean>(GLOBAL_KEY_SOUND_ENABLED, false);
         this.webview?.postMessage({ type: 'settingsLoaded', soundEnabled });
 
         // Send workspace folders to webview (only when multi-root)
@@ -304,6 +304,18 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         } catch {
           vscode.window.showErrorMessage('Pixel Agents: Failed to read or parse layout file.');
         }
+      } else if (message.type === 'applyTemplateLayout') {
+        const layout = message.layout as Record<string, unknown>;
+        if (!layout || layout.version !== 1 || !Array.isArray(layout.tiles)) {
+          vscode.window.showErrorMessage('Pixel Agents: Invalid template layout.');
+          return;
+        }
+        this.layoutWatcher?.markOwnWrite();
+        writeLayoutToFile(layout);
+        this.webview?.postMessage({ type: 'layoutLoaded', layout });
+        vscode.window.showInformationMessage(
+          `Pixel Agents: Template "${String(message.templateName ?? 'Unknown')}" applied.`,
+        );
       }
     });
 

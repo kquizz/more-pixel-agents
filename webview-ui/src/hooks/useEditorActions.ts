@@ -48,6 +48,7 @@ export interface EditorActions {
   handleWallColorChange: (color: FloorColor) => void;
   handleWallSetChange: (setIndex: number) => void;
   handleSelectedFurnitureColorChange: (color: FloorColor | null) => void;
+  handleSelectedFurnitureProjectLabel: (label: string) => void;
   handleFurnitureTypeChange: (type: string) => void; // FurnitureType enum or asset ID
   handleDeleteSelected: () => void;
   handleRotateSelected: () => void;
@@ -233,6 +234,30 @@ export function useEditorActions(
       // Update color on the placed furniture item (null removes color)
       const newFurniture = layout.furniture.map((f) =>
         f.uid === uid ? { ...f, color: color ?? undefined } : f,
+      );
+      const newLayout = { ...layout, furniture: newFurniture };
+
+      editorState.isDirty = true;
+      setIsDirty(true);
+      os.rebuildFromLayout(newLayout);
+      saveLayout(newLayout);
+      setEditorTick((n) => n + 1);
+    },
+    [getOfficeState, editorState, saveLayout],
+  );
+
+  const handleSelectedFurnitureProjectLabel = useCallback(
+    (label: string) => {
+      const uid = editorState.selectedFurnitureUid;
+      if (!uid) return;
+      const os = getOfficeState();
+      const layout = os.getLayout();
+
+      editorState.pushUndo(layout);
+      editorState.clearRedo();
+
+      const newFurniture = layout.furniture.map((f) =>
+        f.uid === uid ? { ...f, projectLabel: label || undefined } : f,
       );
       const newLayout = { ...layout, furniture: newFurniture };
 
@@ -619,6 +644,7 @@ export function useEditorActions(
     handleWallColorChange,
     handleWallSetChange,
     handleSelectedFurnitureColorChange,
+    handleSelectedFurnitureProjectLabel,
     handleFurnitureTypeChange,
     handleDeleteSelected,
     handleRotateSelected,
