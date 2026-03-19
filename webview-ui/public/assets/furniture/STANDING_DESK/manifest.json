@@ -1,0 +1,14 @@
+{
+  "id": "STANDING_DESK",
+  "name": "Standing Desk",
+  "category": "desks",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "hasBuiltInSeat": true,
+  "width": 48,
+  "height": 32,
+  "footprintW": 3,
+  "footprintH": 2
+}

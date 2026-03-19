@@ -53,6 +53,8 @@ export interface FurnitureManifest {
   // Animation (standalone animated assets like FISH_TANK):
   animationGroup?: string;
   frame?: number;
+  // Standing desk: desk has a built-in seat (no separate chair needed)
+  hasBuiltInSeat?: boolean;
 }
 
 export interface InheritedProps {

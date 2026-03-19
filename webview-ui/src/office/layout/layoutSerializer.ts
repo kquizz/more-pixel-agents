@@ -284,6 +284,39 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     }
   }
 
+  // Standing desks: desks with hasBuiltInSeat generate a seat on their front row
+  for (const item of furniture) {
+    const entry = getCatalogEntry(item.type);
+    if (!entry || !entry.hasBuiltInSeat) continue;
+
+    // Create a seat at the bottom-center of the desk (where the agent would stand)
+    const seatCol = item.col + Math.floor(entry.footprintW / 2);
+    const seatRow = item.row + entry.footprintH; // one row below the desk
+    const seatUid = `standing-${item.uid}`;
+
+    // Check for nearby PCs
+    let pcDistance = Infinity;
+    for (let dy = -6; dy <= 6; dy++) {
+      for (let dx = -6; dx <= 6; dx++) {
+        if (pcTiles.has(`${seatCol + dx},${seatRow + dy}`)) {
+          const dist = Math.abs(dx) + Math.abs(dy);
+          if (dist < pcDistance) pcDistance = dist;
+        }
+      }
+    }
+
+    seats.set(seatUid, {
+      uid: seatUid,
+      seatCol,
+      seatRow,
+      facingDir: Direction.UP,
+      facesDesk: true,
+      ...(pcDistance < Infinity ? { pcDistance } : {}),
+      ...(item.projectLabel ? { projectLabel: item.projectLabel } : {}),
+      assigned: false,
+    });
+  }
+
   return seats;
 }
 

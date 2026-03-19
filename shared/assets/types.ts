@@ -38,4 +38,5 @@ export interface CatalogEntry {
   rotationScheme?: string;
   animationGroup?: string;
   frame?: number;
+  hasBuiltInSeat?: boolean;
 }

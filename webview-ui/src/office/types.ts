@@ -138,6 +138,8 @@ export interface FurnitureCatalogEntry {
   canPlaceOnWalls?: boolean;
   /** Whether this is a side-oriented asset that produces a mirrored "left" variant */
   mirrorSide?: boolean;
+  /** Standing desk: desk has a built-in seat (no separate chair needed) */
+  hasBuiltInSeat?: boolean;
 }
 
 export interface PlacedFurniture {

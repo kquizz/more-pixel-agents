@@ -674,6 +674,29 @@ export class OfficeState {
         if (!wasActive) {
           ch.turnTimer = 0;
         }
+        // Abort any amenity/whiteboard visit and return to seat
+        if (ch.amenityVisit) {
+          const returnSeatId = ch.amenityVisit.returnSeatId;
+          ch.amenityVisit = undefined;
+          if (returnSeatId && !ch.seatId) {
+            const seat = this.seats.get(returnSeatId);
+            if (seat && !seat.assigned) {
+              seat.assigned = true;
+              ch.seatId = returnSeatId;
+            }
+          }
+        }
+        if (ch.whiteboardVisit) {
+          const returnSeatId = ch.whiteboardVisit.returnSeatId;
+          ch.whiteboardVisit = undefined;
+          if (returnSeatId && !ch.seatId) {
+            const seat = this.seats.get(returnSeatId);
+            if (seat && !seat.assigned) {
+              seat.assigned = true;
+              ch.seatId = returnSeatId;
+            }
+          }
+        }
       } else {
         // Turn just ended — check for "I'm in" celebration on long turns
         if (

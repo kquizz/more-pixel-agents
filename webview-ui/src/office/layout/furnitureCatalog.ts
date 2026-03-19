@@ -20,6 +20,7 @@ export interface LoadedAssetData {
     rotationScheme?: string;
     animationGroup?: string;
     frame?: number;
+    hasBuiltInSeat?: boolean;
   }>;
   sprites: Record<string, SpriteData>;
 }
@@ -109,6 +110,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
         ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
         ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
         ...(asset.mirrorSide ? { mirrorSide: true } : {}),
+        ...(asset.hasBuiltInSeat ? { hasBuiltInSeat: true } : {}),
       };
     })
     .filter((e): e is CatalogEntryWithCategory => e !== null);

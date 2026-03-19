@@ -61,6 +61,7 @@ export function buildFurnitureCatalog(assetsDir: string): CatalogEntry[] {
           groupId: manifest.id,
           ...(manifest.animationGroup ? { animationGroup: manifest.animationGroup } : {}),
           ...(manifest.frame !== undefined ? { frame: manifest.frame } : {}),
+          ...(manifest.hasBuiltInSeat ? { hasBuiltInSeat: true } : {}),
         });
       } else {
         // Group manifest — flatten into individual assets
