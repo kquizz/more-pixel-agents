@@ -147,6 +147,27 @@ export function renderScene(
     const cached = getCachedSprite(f.sprite, zoom);
     const fx = offsetX + f.x * zoom;
     const fy = offsetY + f.y * zoom;
+
+    // Glow effect for active electronics (behind the sprite)
+    if (f.glowing) {
+      const glowCx = fx + cached.width / 2;
+      const glowCy = fy + cached.height * 0.4;
+      const glowRadius = Math.max(cached.width, cached.height) * 0.7;
+      drawables.push({
+        zY: f.zY - 0.01, // just behind the furniture
+        draw: (c) => {
+          c.save();
+          const grad = c.createRadialGradient(glowCx, glowCy, 0, glowCx, glowCy, glowRadius);
+          grad.addColorStop(0, 'rgba(100, 180, 255, 0.15)');
+          grad.addColorStop(0.5, 'rgba(80, 150, 255, 0.06)');
+          grad.addColorStop(1, 'rgba(60, 120, 255, 0)');
+          c.fillStyle = grad;
+          c.fillRect(glowCx - glowRadius, glowCy - glowRadius, glowRadius * 2, glowRadius * 2);
+          c.restore();
+        },
+      });
+    }
+
     if (f.mirrored) {
       drawables.push({
         zY: f.zY,

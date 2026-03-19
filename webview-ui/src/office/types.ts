@@ -82,6 +82,8 @@ export interface FurnitureInstance {
   zY: number;
   /** Render-time horizontal flip flag (for mirrored side variants) */
   mirrored?: boolean;
+  /** Whether this electronics item is in the ON state (for glow effect) */
+  glowing?: boolean;
 }
 
 export interface ToolActivity {

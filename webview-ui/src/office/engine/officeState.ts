@@ -854,6 +854,24 @@ export class OfficeState {
     });
 
     this.furniture = layoutToFurnitureInstances(modifiedFurniture);
+
+    // Mark electronics near active agents as glowing
+    if (autoOnTiles.size > 0) {
+      for (let i = 0; i < modifiedFurniture.length; i++) {
+        const item = modifiedFurniture[i];
+        const entry = getCatalogEntry(item.type);
+        if (!entry || entry.category !== 'electronics') continue;
+        for (let dr = 0; dr < entry.footprintH; dr++) {
+          for (let dc = 0; dc < entry.footprintW; dc++) {
+            if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
+              this.furniture[i].glowing = true;
+              break;
+            }
+          }
+          if (this.furniture[i].glowing) break;
+        }
+      }
+    }
   }
 
   setAgentTool(id: number, tool: string | null): void {
