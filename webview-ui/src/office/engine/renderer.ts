@@ -232,8 +232,8 @@ export function renderScene(
     if (ch.hasLaptop) {
       const laptopCached = getCachedSprite(LAPTOP_SPRITE, charZoom);
       const laptopX = Math.round(offsetX + ch.x * zoom - laptopCached.width / 2);
-      // When seated (TYPE state), position on lap area; otherwise at feet
-      const lapOffset = ch.state === CharacterState.TYPE ? Math.round(-charZoom * 10) : 0;
+      // When seated (TYPE state), position on lap area (14px above character bottom)
+      const lapOffset = ch.state === CharacterState.TYPE ? Math.round(-charZoom * 14) : 0;
       const laptopY = Math.round(
         offsetY + (ch.y + sittingOffset) * zoom - laptopCached.height + lapOffset,
       );
