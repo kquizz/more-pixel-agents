@@ -157,8 +157,8 @@ function App() {
   const showMigrationNotice = layoutWasReset && !migrationNoticeDismissed;
 
   const [isDebugMode, setIsDebugMode] = useState(false);
-  const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
-  const [showActiveLabels, setShowActiveLabels] = useState(false);
+  const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(true);
+  const [showActiveLabels, setShowActiveLabels] = useState(true);
   const [showKanban, setShowKanban] = useState(false);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
