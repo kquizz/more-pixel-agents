@@ -38,11 +38,28 @@ This fork runs as a **standalone browser app** — no VS Code required. Just `np
 - Parent and sub-agent face each other briefly on spawn (greeting animation)
 - Disappear when the sub-agent task completes
 
+**Speech Bubbles**
+- 8 expressive bubble types beyond the standard permission/waiting indicators
+- Hand-raise for permission requests, zzZ sleep for long idle, ! alert, ? confused, sweat drop, lightbulb idea, heart, and sleep bubbles
+- Bubbles trigger contextually based on agent state and interactions
+
+**Movie-Inspired Easter Eggs**
+- **Office Space**: Idle agents near a printer occasionally gang up for a beatdown — complete with screen shake
+- **IT Crowd**: Agents show confused "?" reactions when encountering unfamiliar tools
+- **Hackers**: Alert "!" cascades ripple through nearby agents
+- **War Games**: Idle agents gather around the arcade cabinet
+
 **Ambient Life**
 - Idle agents occasionally visit the water cooler or coffee machine
 - Idle agents on the same project visit each other's desks for a chat
 - When an agent completes a bead, they walk to the nearest colleague's desk (handoff animation)
 - Agents walk to the whiteboard when completing todos
+- **Paper airplane toss** — idle agents throw paper airplanes to each other across the office
+- **Time-based desk drinks** — coffee mugs in the morning, soda cans in the afternoon, beer bottles in the evening
+
+**Project-Based Desk Routing**
+- Agents analyze file paths from tool activity to determine which project area they belong in
+- Automatically walk to the correct desk cluster when switching contexts
 
 **Notification Sounds**
 - Task completion ding (descending C6-G5)
@@ -54,6 +71,8 @@ This fork runs as a **standalone browser app** — no VS Code required. Just `np
 **Day/Night Cycle**
 - Subtle dark blue overlay tied to the system clock
 - Sunrise (6-8 AM), full daylight, sunset (6-9 PM), night
+- **Monitor glow effect** — screens cast a subtle glow that scales brighter at night
+- **Real-time clock** — wall clock with animated hour and minute hands
 
 ### Canvas Overlays
 
@@ -68,7 +87,7 @@ This fork runs as a **standalone browser app** — no VS Code required. Just `np
 - Project names rendered on desk surfaces from the layout editor's project label
 - Agents without a labeled desk show their project folder name
 
-### Kanban Board
+### Kanban Board (Redesigned)
 
 **BEADS Integration**
 - Detects [BEADS](https://github.com/beads-project/beads) distributed issue tracker from `.beads/` directories
@@ -87,14 +106,25 @@ This fork runs as a **standalone browser app** — no VS Code required. Just `np
 
 **Furniture Catalog**
 - Water cooler, coffee machine (functional — agents visit them)
-- Fish tank (animated 2-frame swimming fish)
+- Fish tank (animated 2-frame swimming fish, fixed animation timing)
+- **Big fish tank** — 3-tile aquarium with 3 independently swimming fish
 - Rug (fully walkable/placeable floor overlay)
 - Coat rack, printer, plants, bookshelves, paintings, and more
+- **New monitors**: widescreen, dual, and triple monitor setups — all with ON animation sprites
+- **Standing desk** for the health-conscious coder
+- **Server rack** for that data center aesthetic
+- **Desk lamp**, **rubber duck** (essential debugging tool), **coffee mug**, **soda can**, **beer bottle**
+- **Arcade cabinet** (agents gather around it War Games style)
+- **Snack machine** for late-night fuel
+- **Window** furniture piece with day/night awareness
+- **Ping pong table** for break time
+- **Wide whiteboard** — 3-tile collaborative surface
 - Project label text input when selecting a desk
+- Chair sitting positions refined for pixel-perfect alignment
 
 **Office Templates**
-- 4 pre-built layouts selectable from Settings: Startup, Enterprise, Coworking, Gaming Studio
-- Each template includes desks, seating, amenities, and decorations
+- 4 pre-built layouts selectable from Settings: Gaming Studio, Startup, Enterprise, Coworking
+- Each template includes desks, seating, amenities, and decorations themed to the vibe
 
 ## Quick Start
 

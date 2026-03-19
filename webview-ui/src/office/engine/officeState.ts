@@ -32,6 +32,7 @@ import {
   SCREEN_SHAKE_DURATION_SEC,
   SCREEN_SHAKE_INTENSITY,
   SLEEP_IDLE_THRESHOLD_SEC,
+  STRETCH_THRESHOLD_SEC,
   SUBAGENT_SCALE,
   WAITING_BUBBLE_DURATION_SEC,
   WHITEBOARD_ARGUMENT_CHANCE,
@@ -1192,9 +1193,19 @@ export class OfficeState {
         ch.permissionTimer = 0;
       }
 
-      // Track active turn duration
+      // Track active turn duration + stretching after long typing
       if (ch.isActive) {
         ch.turnTimer += dt;
+        // Agent stretching: after 5min continuous work, brief stretch with idea bubble
+        if (
+          ch.turnTimer >= STRETCH_THRESHOLD_SEC &&
+          !ch.isSubagent &&
+          ch.state === CharacterState.TYPE &&
+          !ch.bubbleType
+        ) {
+          this.showReactionBubble(ch.id, 'idea');
+          ch.turnTimer = 0; // reset so it triggers again after another 5min
+        }
       }
 
       // Track idle time — show sleep bubble after extended inactivity
