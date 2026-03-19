@@ -80,7 +80,7 @@ export function KanbanOverlay({ todos, onClose }: KanbanOverlayProps) {
             marginBottom: 16,
           }}
         >
-          <h2 style={{ margin: 0, color: '#cba6f7', fontSize: 18, letterSpacing: 1 }}>KANBAN</h2>
+          <h2 style={{ margin: 0, color: '#cba6f7', fontSize: 22, letterSpacing: 1 }}>KANBAN</h2>
           <button
             onClick={onClose}
             style={{
@@ -88,7 +88,7 @@ export function KanbanOverlay({ todos, onClose }: KanbanOverlayProps) {
               border: '2px solid #585b70',
               color: '#585b70',
               padding: '4px 10px',
-              fontSize: 14,
+              fontSize: 16,
               fontFamily: '"Courier New", monospace',
               cursor: 'pointer',
             }}
@@ -132,7 +132,7 @@ function renderColumn(
     <div style={{ flex: 1, minWidth: 220 }}>
       <div
         style={{
-          fontSize: 13,
+          fontSize: 15,
           fontWeight: 'bold',
           color,
           marginBottom: 10,
@@ -160,7 +160,7 @@ function renderColumn(
               color,
               border: `1px solid ${color}`,
               padding: '2px 8px',
-              fontSize: 11,
+              fontSize: 13,
               fontFamily: '"Courier New", monospace',
               cursor: 'pointer',
               opacity: 0.7,
@@ -171,7 +171,7 @@ function renderColumn(
         )}
       </div>
       {items.length === 0 && (
-        <div style={{ color: '#45475a', fontSize: 13, fontStyle: 'italic', padding: '8px 0' }}>
+        <div style={{ color: '#45475a', fontSize: 15, fontStyle: 'italic', padding: '8px 0' }}>
           None
         </div>
       )}
@@ -184,7 +184,7 @@ function renderColumn(
                 background: expandedTaskId === item.taskId ? '#45475a' : '#313244',
                 padding: '10px 12px',
                 marginBottom: expandedTaskId === item.taskId ? 0 : 0,
-                fontSize: 14,
+                fontSize: 16,
                 lineHeight: 1.4,
                 borderLeft: `3px solid ${color}`,
                 cursor: 'pointer',
@@ -198,7 +198,7 @@ function renderColumn(
                     style={{
                       border: `1px solid ${PRIORITY_COLORS[item.priority] ?? '#585b70'}`,
                       padding: '1px 6px',
-                      fontSize: 11,
+                      fontSize: 13,
                       color: PRIORITY_COLORS[item.priority] ?? '#585b70',
                     }}
                   >
@@ -210,7 +210,7 @@ function renderColumn(
                     style={{
                       border: '1px solid #45475a',
                       padding: '1px 6px',
-                      fontSize: 11,
+                      fontSize: 13,
                       color: '#6c7086',
                     }}
                   >
@@ -227,11 +227,11 @@ function renderColumn(
                   borderTop: 'none',
                   padding: '12px',
                   marginBottom: 0,
-                  fontSize: 13,
+                  fontSize: 15,
                   lineHeight: 1.6,
                 }}
               >
-                <div style={{ color: '#585b70', marginBottom: 6, fontSize: 11 }}>{item.taskId}</div>
+                <div style={{ color: '#585b70', marginBottom: 6, fontSize: 13 }}>{item.taskId}</div>
                 {item.description && <div style={{ marginBottom: 8 }}>{item.description}</div>}
                 <div
                   style={{
@@ -239,7 +239,7 @@ function renderColumn(
                     flexWrap: 'wrap',
                     gap: 12,
                     color: '#6c7086',
-                    fontSize: 12,
+                    fontSize: 14,
                   }}
                 >
                   {item.assignee && <span>Assigned: {item.assignee}</span>}
@@ -257,7 +257,7 @@ function renderColumn(
                       padding: '8px 10px',
                       background: '#313244',
                       borderLeft: '3px solid #a6e3a1',
-                      fontSize: 12,
+                      fontSize: 14,
                       color: '#a6e3a1',
                     }}
                   >
@@ -277,7 +277,7 @@ function renderColumn(
             color: '#6c7086',
             border: '1px solid #45475a',
             padding: '6px 12px',
-            fontSize: 12,
+            fontSize: 14,
             fontFamily: '"Courier New", monospace',
             cursor: 'pointer',
             width: '100%',
