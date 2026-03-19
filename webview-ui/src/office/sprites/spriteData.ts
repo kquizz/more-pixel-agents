@@ -13,6 +13,8 @@ import bubbleSweatData from './bubble-sweat.json';
 import bubbleWaitingData from './bubble-waiting.json';
 import coffeeMachineData from './coffee-machine.json';
 import coffeeMugData from './coffee-mug.json';
+import fireData1 from './fire.json';
+import fireData2 from './fire-2.json';
 import laptopData from './laptop.json';
 import sodaCanData from './soda-can.json';
 import waterCoolerData from './water-cooler.json';
@@ -63,6 +65,12 @@ export const WATER_COOLER_SPRITE: SpriteData = resolveBubbleSprite(waterCoolerDa
 
 /** Coffee machine sprite for office break area (10x12) */
 export const COFFEE_MACHINE_SPRITE: SpriteData = resolveBubbleSprite(coffeeMachineData);
+
+/** Fire sprites for CI failure effects (2 animation frames) */
+export const FIRE_SPRITES: SpriteData[] = [
+  resolveBubbleSprite(fireData1),
+  resolveBubbleSprite(fireData2),
+];
 
 /** Time-based desk drink sprites */
 export const COFFEE_MUG_SPRITE: SpriteData = resolveBubbleSprite(coffeeMugData);

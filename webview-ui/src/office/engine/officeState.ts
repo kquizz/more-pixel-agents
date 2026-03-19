@@ -1626,6 +1626,35 @@ export class OfficeState {
     return labels;
   }
 
+  getBranchRoomsForRenderer(): Array<{
+    branch: string;
+    roomCol: number;
+    roomRow: number;
+    width: number;
+    height: number;
+    ciStatus?: string;
+  }> {
+    const rooms: Array<{
+      branch: string;
+      roomCol: number;
+      roomRow: number;
+      width: number;
+      height: number;
+      ciStatus?: string;
+    }> = [];
+    for (const room of this.branchRooms.values()) {
+      rooms.push({
+        branch: room.branch,
+        roomCol: room.roomCol,
+        roomRow: room.roomRow,
+        width: room.width,
+        height: room.height,
+        ciStatus: room.pr?.ciStatus,
+      });
+    }
+    return rooms;
+  }
+
   getClockPositions(): Array<{ col: number; row: number }> {
     const results: Array<{ col: number; row: number }> = [];
     for (const item of this.layout.furniture) {

@@ -113,6 +113,8 @@ const ITEMS = [
     outFile: 'FIRE_EXTINGUISHER.png',
   },
   { json: 'meeting-table.json', assetDir: 'MEETING_TABLE', outFile: 'MEETING_TABLE.png' },
+  { json: 'fire.json', assetDir: 'FIRE', outFile: 'FIRE.png' },
+  { json: 'fire-2.json', assetDir: 'FIRE_2', outFile: 'FIRE_2.png' },
 ];
 
 function spriteToPng(spriteJsonPath, outputPath) {

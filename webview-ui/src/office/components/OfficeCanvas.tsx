@@ -292,6 +292,7 @@ export function OfficeCanvas({
           todos,
           isDebugMode ? officeState.seats : undefined,
           officeState.getClockPositions(),
+          officeState.getBranchRoomsForRenderer(),
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 
