@@ -79,6 +79,40 @@ const ITEMS = [
   { json: 'snack-machine.json', assetDir: 'SNACK_MACHINE', outFile: 'SNACK_MACHINE.png' },
   { json: 'window-day.json', assetDir: 'WINDOW', outFile: 'WINDOW.png' },
   { json: 'ping-pong-table.json', assetDir: 'PING_PONG_TABLE', outFile: 'PING_PONG_TABLE.png' },
+  { json: 'neon-sign.json', assetDir: 'NEON_SIGN', outFile: 'NEON_SIGN.png' },
+  {
+    json: 'motivational-poster.json',
+    assetDir: 'MOTIVATIONAL_POSTER',
+    outFile: 'MOTIVATIONAL_POSTER.png',
+  },
+  { json: 'trophy-case.json', assetDir: 'TROPHY_CASE', outFile: 'TROPHY_CASE.png' },
+  {
+    json: 'laptop-standalone.json',
+    assetDir: 'LAPTOP_STANDALONE',
+    outFile: 'LAPTOP_STANDALONE.png',
+  },
+  { json: 'tablet-stand.json', assetDir: 'TABLET_STAND', outFile: 'TABLET_STAND.png' },
+  { json: 'smart-speaker.json', assetDir: 'SMART_SPEAKER', outFile: 'SMART_SPEAKER.png' },
+  { json: 'drone.json', assetDir: 'DRONE', outFile: 'DRONE.png' },
+  { json: 'phone-booth.json', assetDir: 'PHONE_BOOTH', outFile: 'PHONE_BOOTH.png' },
+  { json: 'microwave.json', assetDir: 'MICROWAVE', outFile: 'MICROWAVE.png' },
+  { json: 'mini-fridge.json', assetDir: 'MINI_FRIDGE', outFile: 'MINI_FRIDGE.png' },
+  { json: 'pizza-box.json', assetDir: 'PIZZA_BOX', outFile: 'PIZZA_BOX.png' },
+  { json: 'donuts-box.json', assetDir: 'DONUTS_BOX', outFile: 'DONUTS_BOX.png' },
+  { json: 'company-logo.json', assetDir: 'COMPANY_LOGO', outFile: 'COMPANY_LOGO.png' },
+  {
+    json: 'whiteboard-markers.json',
+    assetDir: 'WHITEBOARD_MARKERS',
+    outFile: 'WHITEBOARD_MARKERS.png',
+  },
+  { json: 'ac-unit.json', assetDir: 'AC_UNIT', outFile: 'AC_UNIT.png' },
+  { json: 'ceiling-fan.json', assetDir: 'CEILING_FAN', outFile: 'CEILING_FAN.png' },
+  {
+    json: 'fire-extinguisher.json',
+    assetDir: 'FIRE_EXTINGUISHER',
+    outFile: 'FIRE_EXTINGUISHER.png',
+  },
+  { json: 'meeting-table.json', assetDir: 'MEETING_TABLE', outFile: 'MEETING_TABLE.png' },
 ];
 
 function spriteToPng(spriteJsonPath, outputPath) {
