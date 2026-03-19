@@ -75,6 +75,10 @@ const ITEMS = [
     assetDir: 'TRIPLE_MONITOR',
     outFile: 'TRIPLE_MONITOR_ON_2.png',
   },
+  { json: 'arcade-cabinet.json', assetDir: 'ARCADE_CABINET', outFile: 'ARCADE_CABINET.png' },
+  { json: 'snack-machine.json', assetDir: 'SNACK_MACHINE', outFile: 'SNACK_MACHINE.png' },
+  { json: 'window-day.json', assetDir: 'WINDOW', outFile: 'WINDOW.png' },
+  { json: 'ping-pong-table.json', assetDir: 'PING_PONG_TABLE', outFile: 'PING_PONG_TABLE.png' },
 ];
 
 function spriteToPng(spriteJsonPath, outputPath) {

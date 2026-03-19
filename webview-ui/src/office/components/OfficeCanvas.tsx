@@ -295,6 +295,40 @@ export function OfficeCanvas({
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 
+        // Paper airplane projectiles
+        for (const plane of officeState.paperAirplanes) {
+          const t = plane.timer / plane.duration;
+          const x = plane.fromX + (plane.toX - plane.fromX) * t;
+          const y = plane.fromY + (plane.toY - plane.fromY) * t - Math.sin(t * Math.PI) * 20; // arc
+          const screenX = offsetX + x * zoom;
+          const screenY = offsetY + y * zoom;
+          const angle = Math.atan2(plane.toY - plane.fromY, plane.toX - plane.fromX);
+          const size = zoom * 3;
+          ctx.save();
+          ctx.translate(screenX, screenY);
+          ctx.rotate(angle - Math.sin(t * Math.PI * 4) * 0.2); // slight wobble
+          ctx.fillStyle = '#eeeeff';
+          ctx.beginPath();
+          ctx.moveTo(size, 0);
+          ctx.lineTo(-size, -size * 0.5);
+          ctx.lineTo(-size * 0.3, 0);
+          ctx.lineTo(-size, size * 0.5);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#ccccdd';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Error flash overlay (brief red tint when tool errors occur)
+        if (officeState.errorFlashTimer > 0) {
+          ctx.save();
+          ctx.fillStyle = `rgba(255, 40, 40, ${officeState.errorFlashTimer * 0.3})`;
+          ctx.fillRect(0, 0, w, h);
+          ctx.restore();
+        }
+
         // Store delete/rotate button bounds for hit-testing
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null;
         rotateButtonBoundsRef.current = editorRender?.rotateButtonBounds ?? null;

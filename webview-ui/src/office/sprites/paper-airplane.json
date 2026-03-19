@@ -1,0 +1,19 @@
+{
+  "name": "paper-airplane",
+  "description": "Tiny paper airplane for projectile animation (6x4)",
+  "width": 6,
+  "height": 4,
+  "palette": {
+    "_": "",
+    "W": "#eeeeff",
+    "S": "#ccccdd",
+    "L": "#ddddee",
+    "D": "#aaaabb"
+  },
+  "pixels": [
+    ["_","_","W","_","_","_"],
+    ["W","W","L","W","W","W"],
+    ["_","S","L","S","_","_"],
+    ["_","_","D","_","_","_"]
+  ]
+}

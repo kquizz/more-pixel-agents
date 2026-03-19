@@ -85,6 +85,17 @@ export class OfficeState {
   furnitureAnimTimer = 0;
   /** Screen shake timer (counts down from SCREEN_SHAKE_DURATION_SEC) */
   screenShakeTimer = 0;
+  /** Error flash timer (counts down, renders red overlay) */
+  errorFlashTimer = 0;
+  /** Active paper airplane projectiles */
+  paperAirplanes: Array<{
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    timer: number;
+    duration: number;
+  }> = [];
   /** Timer tracking how long ALL agents have been idle simultaneously */
   allIdleTimer = 0;
   /** Cooldown preventing all-idle fun from triggering too often */
@@ -934,6 +945,12 @@ export class OfficeState {
     this.screenShakeTimer = SCREEN_SHAKE_DURATION_SEC;
   }
 
+  /** Trigger error flash (brief red overlay) */
+  triggerErrorFlash(agentId: number): void {
+    this.errorFlashTimer = 0.4;
+    this.showReactionBubble(agentId, 'sweat');
+  }
+
   /** Show a timed reaction bubble (alert, confused, sweat, idea, heart) that auto-fades */
   showReactionBubble(id: number, type: 'alert' | 'confused' | 'sweat' | 'idea' | 'heart'): void {
     const ch = this.characters.get(id);
@@ -991,6 +1008,20 @@ export class OfficeState {
           x: (Math.random() * 2 - 1) * SCREEN_SHAKE_INTENSITY,
           y: (Math.random() * 2 - 1) * SCREEN_SHAKE_INTENSITY,
         };
+      }
+    }
+
+    // Error flash countdown
+    if (this.errorFlashTimer > 0) {
+      this.errorFlashTimer -= dt;
+      if (this.errorFlashTimer <= 0) this.errorFlashTimer = 0;
+    }
+
+    // Paper airplane animation
+    for (let i = this.paperAirplanes.length - 1; i >= 0; i--) {
+      this.paperAirplanes[i].timer += dt;
+      if (this.paperAirplanes[i].timer >= this.paperAirplanes[i].duration) {
+        this.paperAirplanes.splice(i, 1);
       }
     }
 
@@ -1515,12 +1546,38 @@ export class OfficeState {
   }
 
   /** All-idle fun: agents react when everyone is idle for too long */
+  /** Launch a paper airplane from one agent to another */
+  launchPaperAirplane(fromId: number, toId: number): void {
+    const from = this.characters.get(fromId);
+    const to = this.characters.get(toId);
+    if (!from || !to) return;
+    this.paperAirplanes.push({
+      fromX: from.x,
+      fromY: from.y - 12,
+      toX: to.x,
+      toY: to.y - 12,
+      timer: 0,
+      duration: 1.5,
+    });
+    this.showReactionBubble(fromId, 'idea');
+    setTimeout(() => this.showReactionBubble(toId, 'alert'), 1200);
+  }
+
   triggerAllIdleFun(): void {
     const agents: Character[] = [];
     for (const ch of this.characters.values()) {
       if (!ch.isSubagent) agents.push(ch);
     }
     if (agents.length < 2) return;
+
+    // 40% chance paper airplane, 30% whiteboard argument, 30% bubble wave
+    const roll = Math.random();
+    if (roll < 0.4) {
+      // Paper airplane toss!
+      const shuffled = agents.sort(() => Math.random() - 0.5);
+      this.launchPaperAirplane(shuffled[0].id, shuffled[1].id);
+      return;
+    }
 
     // Random fun activity: wave of reaction bubbles across all agents
     const bubbleTypes: Array<'heart' | 'idea' | 'confused' | 'alert'> = [
