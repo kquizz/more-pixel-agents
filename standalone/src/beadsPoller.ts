@@ -139,10 +139,11 @@ export function pollAllBeads(beadsRoots: string[]): BeadsPollResult[] {
 
 export function pollBeads(beadsRoot: string): BeadsPollResult[] {
   try {
-    const output = execSync('bd list --json --all', {
+    const output = execSync('bd list --json --all 2>/dev/null', {
       cwd: beadsRoot,
       encoding: 'utf-8',
       timeout: 5000,
+      stdio: ['pipe', 'pipe', 'ignore'], // suppress stderr
     });
     const issues: BeadsIssue[] = JSON.parse(output);
     return issues.map((issue) => ({

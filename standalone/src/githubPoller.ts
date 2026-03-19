@@ -14,7 +14,7 @@ export function pollGitHubPRs(cwd: string): PrStatus[] {
   try {
     const output = execSync(
       'gh pr list --state all --limit 20 --json number,title,headRefName,state,statusCheckRollup,reviewDecision,mergeable',
-      { cwd, encoding: 'utf-8', timeout: 10000 },
+      { cwd, encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'ignore'] },
     );
     const prs = JSON.parse(output) as Array<Record<string, unknown>>;
     return prs.map((pr) => ({
@@ -54,7 +54,12 @@ function mapReviewStatus(decision: string | null): PrStatus['reviewStatus'] {
 
 export function getCurrentBranch(cwd: string): string | null {
   try {
-    return execSync('git branch --show-current', { cwd, encoding: 'utf-8', timeout: 3000 }).trim();
+    return execSync('git branch --show-current', {
+      cwd,
+      encoding: 'utf-8',
+      timeout: 3000,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
   } catch {
     return null;
   }
