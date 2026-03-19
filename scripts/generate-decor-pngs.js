@@ -46,6 +46,7 @@ const ITEMS = [
   { json: 'server-rack.json', assetDir: 'SERVER_RACK', outFile: 'SERVER_RACK.png' },
   { json: 'desk-lamp.json', assetDir: 'DESK_LAMP', outFile: 'DESK_LAMP.png' },
   { json: 'rubber-duck.json', assetDir: 'RUBBER_DUCK', outFile: 'RUBBER_DUCK.png' },
+  { json: 'triple-monitor.json', assetDir: 'TRIPLE_MONITOR', outFile: 'TRIPLE_MONITOR.png' },
 ];
 
 function spriteToPng(spriteJsonPath, outputPath) {
