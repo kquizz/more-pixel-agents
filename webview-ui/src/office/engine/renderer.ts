@@ -1079,20 +1079,20 @@ export function renderFrame(
     const now = new Date();
     const hours = now.getHours() % 12;
     const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
     const hourAngle = ((hours + minutes / 60) / 12) * Math.PI * 2 - Math.PI / 2;
-    const minuteAngle = (minutes / 60) * Math.PI * 2 - Math.PI / 2;
+    const minuteAngle = ((minutes + seconds / 60) / 60) * Math.PI * 2 - Math.PI / 2;
 
     ctx.save();
     for (const clock of clockPositions) {
-      // Clock face center — the clock sprite is 16x32, face is in the upper portion
-      // The face center is approximately at (8, 8) within the sprite (top-left quadrant)
+      // Clock face center — sprite is 16x32, face center at pixel (8, 16) in sprite coords
       const cx = Math.round(offsetX + (clock.col * TILE_SIZE + 8) * zoom);
-      const cy = Math.round(offsetY + (clock.row * TILE_SIZE + 7) * zoom);
-      const radius = Math.round(5 * zoom);
+      const cy = Math.round(offsetY + (clock.row * TILE_SIZE + 16) * zoom);
+      const radius = Math.round(4 * zoom);
 
       // Hour hand (shorter, thicker)
-      ctx.strokeStyle = '#333344';
-      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.8));
+      ctx.strokeStyle = '#222233';
+      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.7));
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(cx, cy);

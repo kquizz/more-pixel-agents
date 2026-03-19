@@ -1,0 +1,15 @@
+{
+  "id": "BIG_FISH_TANK",
+  "name": "Large Fish Tank",
+  "category": "decor",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "width": 48,
+  "height": 32,
+  "footprintW": 3,
+  "footprintH": 2,
+  "animationGroup": "BIG_FISH_TANK",
+  "frame": 0
+}
