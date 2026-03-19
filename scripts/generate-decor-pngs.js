@@ -50,6 +50,31 @@ const ITEMS = [
   { json: 'standing-desk.json', assetDir: 'STANDING_DESK', outFile: 'STANDING_DESK.png' },
   { json: 'big-fish-tank.json', assetDir: 'BIG_FISH_TANK', outFile: 'BIG_FISH_TANK.png' },
   { json: 'big-fish-tank-2.json', assetDir: 'BIG_FISH_TANK_2', outFile: 'BIG_FISH_TANK_2.png' },
+  {
+    json: 'widescreen-front-on1.json',
+    assetDir: 'WIDESCREEN',
+    outFile: 'WIDESCREEN_FRONT_ON_1.png',
+  },
+  {
+    json: 'widescreen-front-on2.json',
+    assetDir: 'WIDESCREEN',
+    outFile: 'WIDESCREEN_FRONT_ON_2.png',
+  },
+  {
+    json: 'dual-monitor-front-on1.json',
+    assetDir: 'DUAL_MONITOR',
+    outFile: 'DUAL_MONITOR_FRONT_ON_1.png',
+  },
+  {
+    json: 'triple-monitor-on1.json',
+    assetDir: 'TRIPLE_MONITOR',
+    outFile: 'TRIPLE_MONITOR_ON_1.png',
+  },
+  {
+    json: 'triple-monitor-on2.json',
+    assetDir: 'TRIPLE_MONITOR',
+    outFile: 'TRIPLE_MONITOR_ON_2.png',
+  },
 ];
 
 function spriteToPng(spriteJsonPath, outputPath) {
