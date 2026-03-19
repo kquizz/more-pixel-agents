@@ -291,6 +291,7 @@ export function OfficeCanvas({
           officeState.getWhiteboardPositions(),
           todos,
           isDebugMode ? officeState.seats : undefined,
+          officeState.getClockPositions(),
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 

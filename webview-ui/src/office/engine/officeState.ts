@@ -1216,6 +1216,16 @@ export class OfficeState {
     return labels;
   }
 
+  getClockPositions(): Array<{ col: number; row: number }> {
+    const results: Array<{ col: number; row: number }> = [];
+    for (const item of this.layout.furniture) {
+      if (item.type.toUpperCase().includes('CLOCK')) {
+        results.push({ col: item.col, row: item.row });
+      }
+    }
+    return results;
+  }
+
   getWhiteboardPositions(): Array<{ col: number; row: number; width: number; height: number }> {
     const results: Array<{ col: number; row: number; width: number; height: number }> = [];
     for (const item of this.layout.furniture) {

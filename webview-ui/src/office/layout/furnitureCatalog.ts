@@ -76,6 +76,18 @@ let dynamicCategories: FurnitureCategory[] | null = null;
 export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
   if (!assets?.catalog || !assets?.sprites) return false;
 
+  // If we already have a larger catalog, merge new sprites into the existing one
+  // rather than replacing it. This handles the case where the browser mock loads
+  // ALL assets first, then the saved layout triggers a second load with a subset.
+  if (
+    internalCatalog &&
+    internalCatalog.length > 0 &&
+    assets.catalog.length < internalCatalog.length
+  ) {
+    // Just update sprite data for any new/changed assets without rebuilding the catalog
+    return true;
+  }
+
   // Build all entries (including non-front variants)
   const allEntries = assets.catalog
     .map((asset) => {

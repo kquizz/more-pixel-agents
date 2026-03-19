@@ -938,6 +938,7 @@ export function renderFrame(
   whiteboards?: Array<{ col: number; row: number; width: number; height: number }>,
   todos?: Array<{ status: string }>,
   debugSeats?: Map<string, Seat>,
+  clockPositions?: Array<{ col: number; row: number }>,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -1042,6 +1043,53 @@ export function renderFrame(
   // Whiteboard todo blocks
   if (whiteboards && todos) {
     renderWhiteboardTodos(ctx, whiteboards, todos, offsetX, offsetY, zoom);
+  }
+
+  // Real-time clock hands
+  if (clockPositions && clockPositions.length > 0) {
+    const now = new Date();
+    const hours = now.getHours() % 12;
+    const minutes = now.getMinutes();
+    const hourAngle = ((hours + minutes / 60) / 12) * Math.PI * 2 - Math.PI / 2;
+    const minuteAngle = (minutes / 60) * Math.PI * 2 - Math.PI / 2;
+
+    ctx.save();
+    for (const clock of clockPositions) {
+      // Clock face center — the clock sprite is 16x32, face is in the upper portion
+      // The face center is approximately at (8, 8) within the sprite (top-left quadrant)
+      const cx = Math.round(offsetX + (clock.col * TILE_SIZE + 8) * zoom);
+      const cy = Math.round(offsetY + (clock.row * TILE_SIZE + 7) * zoom);
+      const radius = Math.round(5 * zoom);
+
+      // Hour hand (shorter, thicker)
+      ctx.strokeStyle = '#333344';
+      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.8));
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(
+        cx + Math.cos(hourAngle) * radius * 0.55,
+        cy + Math.sin(hourAngle) * radius * 0.55,
+      );
+      ctx.stroke();
+
+      // Minute hand (longer, thinner)
+      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5));
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(
+        cx + Math.cos(minuteAngle) * radius * 0.85,
+        cy + Math.sin(minuteAngle) * radius * 0.85,
+      );
+      ctx.stroke();
+
+      // Center dot
+      ctx.fillStyle = '#333344';
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(1, zoom * 0.3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   // Speech bubbles (always on top of characters)
