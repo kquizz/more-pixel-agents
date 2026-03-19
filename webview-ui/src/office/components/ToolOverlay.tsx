@@ -194,17 +194,19 @@ export function ToolOverlay({
                 >
                   {activityText}
                 </span>
-                {ch.folderName && (
+                {(ch.projectPath || ch.folderName) && (
                   <span
                     style={{
                       fontSize: '16px',
-                      color: 'var(--pixel-text-dim)',
+                      color: ch.projectPath ? 'var(--pixel-accent)' : 'var(--pixel-text-dim)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       display: 'block',
                     }}
                   >
-                    {ch.folderName}
+                    {ch.projectPath
+                      ? ch.projectPath.split('/').pop() || ch.projectPath
+                      : ch.folderName}
                   </span>
                 )}
               </div>
