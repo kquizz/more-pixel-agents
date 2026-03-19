@@ -921,6 +921,19 @@ export class OfficeState {
       ch.bubbleType = 'permission';
       ch.bubbleTimer = 0;
       ch.permissionTimer = 0;
+      // IT Crowd: nearby idle agents react with confused bubble
+      // "Have you tried turning it off and on again?"
+      for (const other of this.characters.values()) {
+        if (other.id === id || other.isSubagent || other.isActive) continue;
+        if (other.bubbleType) continue;
+        const dist = Math.abs(other.tileCol - ch.tileCol) + Math.abs(other.tileRow - ch.tileRow);
+        if (dist <= 6 && Math.random() < 0.3) {
+          setTimeout(
+            () => this.showReactionBubble(other.id, 'confused'),
+            500 + Math.random() * 1000,
+          );
+        }
+      }
     }
   }
 
@@ -1570,13 +1583,25 @@ export class OfficeState {
     }
     if (agents.length < 2) return;
 
-    // 40% chance paper airplane, 30% whiteboard argument, 30% bubble wave
+    // 30% paper airplane, 20% arcade gathering, 50% bubble wave
     const roll = Math.random();
-    if (roll < 0.4) {
+    if (roll < 0.3) {
       // Paper airplane toss!
       const shuffled = agents.sort(() => Math.random() - 0.5);
       this.launchPaperAirplane(shuffled[0].id, shuffled[1].id);
       return;
+    }
+    if (roll < 0.5) {
+      // War Games: "Shall we play a game?" — agents visit the arcade cabinet
+      const arcades = this.getAmenityPositions().filter((a) => a.type.includes('ARCADE'));
+      if (arcades.length > 0 && agents.length >= 2) {
+        const shuffled = agents.sort(() => Math.random() - 0.5);
+        // Send up to 2 agents to the arcade
+        for (let i = 0; i < Math.min(2, shuffled.length); i++) {
+          setTimeout(() => this.triggerAmenityVisit(shuffled[i].id), i * 800);
+        }
+        return;
+      }
     }
 
     // Random fun activity: wave of reaction bubbles across all agents

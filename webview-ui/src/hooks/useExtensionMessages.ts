@@ -244,6 +244,19 @@ export function useExtensionMessages(
         if (projectHint) {
           os.updateAgentProject(id, projectHint);
         }
+        // Hackers cascade: long Bash commands cause alert ripple across nearby agents
+        if (status.startsWith('Running:') && status.length > 60) {
+          for (const other of os.characters.values()) {
+            if (other.id === id || other.isSubagent || other.isActive) continue;
+            const ch = os.characters.get(id);
+            if (!ch) break;
+            const dist =
+              Math.abs(other.tileCol - ch.tileCol) + Math.abs(other.tileRow - ch.tileRow);
+            if (dist <= 10) {
+              setTimeout(() => os.showReactionBubble(other.id, 'alert'), dist * 150);
+            }
+          }
+        }
         // Create sub-agent character for Task tool subtasks
         if (status.startsWith('Subtask:')) {
           const label = status.slice('Subtask:'.length).trim();
