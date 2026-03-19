@@ -837,7 +837,15 @@ export class OfficeState {
   /** Update stored PR list and link PRs to existing branch rooms */
   updatePrList(prs: PrStatus[]): void {
     this.prStatuses = prs;
-    // Link PRs to branch rooms
+    // Auto-create rooms for OPEN PRs that don't have rooms yet
+    for (const pr of prs) {
+      if (pr.state === 'OPEN' && !BRANCH_ROOM_SKIP.includes(pr.branch)) {
+        if (!this.branchRooms.has(pr.branch)) {
+          this.generateBranchRoom(pr.branch);
+        }
+      }
+    }
+    // Link all PRs to their branch rooms
     for (const pr of prs) {
       const room = this.branchRooms.get(pr.branch);
       if (room) {
