@@ -835,19 +835,37 @@ export class OfficeState {
   // ── Branch Room Management ──────────────────────────────────
 
   /** Update stored PR list and link PRs to existing branch rooms */
+  /** Width of the main (user-designed) room before any branch rooms were added */
+  private mainRoomCols = 0;
+
   updatePrList(prs: PrStatus[]): void {
     console.log(
       `[BranchRoom] updatePrList: ${prs.length} PRs (${prs.filter((p) => p.state === 'OPEN').length} open), ${this.branchRooms.size} existing rooms`,
     );
     this.prStatuses = prs;
-    // Auto-create rooms for OPEN PRs that don't have rooms yet
+
+    // Remember the main room width before expansion
+    if (this.mainRoomCols === 0) {
+      this.mainRoomCols = this.layout.cols;
+    }
+
+    // Collect new branches, then batch-generate
+    const newBranches: string[] = [];
     for (const pr of prs) {
       if (pr.state === 'OPEN' && !BRANCH_ROOM_SKIP.includes(pr.branch)) {
         if (!this.branchRooms.has(pr.branch)) {
-          this.generateBranchRoom(pr.branch);
+          newBranches.push(pr.branch);
         }
       }
     }
+    if (newBranches.length > 0) {
+      for (const branch of newBranches) {
+        this.generateBranchRoom(branch);
+      }
+      // Rebuild once after all rooms
+      this.rebuildFromLayout(this.layout);
+    }
+
     // Link all PRs to their branch rooms
     for (const pr of prs) {
       const room = this.branchRooms.get(pr.branch);
@@ -913,7 +931,9 @@ export class OfficeState {
 
     // Create room if it doesn't exist
     if (!this.branchRooms.has(branch)) {
+      if (this.mainRoomCols === 0) this.mainRoomCols = this.layout.cols;
       this.generateBranchRoom(branch);
+      this.rebuildFromLayout(this.layout);
     }
 
     // Move agent to branch room
@@ -930,10 +950,8 @@ export class OfficeState {
     const gridCol = (idx % BRANCH_ROOM_MAX_COLS) + 1; // +1 because col 0 is main room
     const gridRow = Math.floor(idx / BRANCH_ROOM_MAX_COLS);
 
-    // Calculate tile offset (right of main room, with 1-tile gap)
-    const mainCols = this.layout.cols;
-    // For the first "column" of rooms, place them right after the main room
-    // For subsequent columns, offset by room width
+    // Calculate tile offset using the ORIGINAL main room width (before any expansion)
+    const mainCols = this.mainRoomCols || this.layout.cols;
     const roomCol = mainCols + (gridCol - 1) * BRANCH_ROOM_WIDTH;
     const roomRow = gridRow * BRANCH_ROOM_HEIGHT;
 
@@ -968,9 +986,7 @@ export class OfficeState {
     }
 
     this.branchRooms.set(branch, room);
-
-    // Rebuild derived state (seats, tileMap, etc.)
-    this.rebuildFromLayout(this.layout);
+    // Note: caller is responsible for rebuildFromLayout after batch generation
   }
 
   /** Expand the layout grid to at least newCols x newRows, preserving existing tiles */
