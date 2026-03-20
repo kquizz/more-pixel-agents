@@ -12,6 +12,7 @@ interface TerminalPanelProps {
   agentLabel: string;
   messages: TerminalMessage[];
   onClose: () => void;
+  onFocusTerminal?: (agentId: number) => void;
 }
 
 export function TerminalPanel({ agentId, agentLabel, messages, onClose }: TerminalPanelProps) {

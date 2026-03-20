@@ -199,8 +199,7 @@ function App() {
     const os = getOfficeState();
     const meta = os.subagentMeta.get(agentId);
     const focusId = meta ? meta.parentAgentId : agentId;
-    vscode.postMessage({ type: 'focusAgent', id: focusId });
-    // Toggle terminal panel for this agent
+    // Toggle terminal panel — don't auto-open VS Code terminal
     setTerminalAgentId((prev) => (prev === focusId ? null : focusId));
   }, []);
 
