@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { DebugView } from './components/DebugView.js';
 import { KanbanOverlay } from './components/KanbanOverlay.js';
+import { TerminalPanel } from './components/TerminalPanel.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { PULSE_ANIMATION_DURATION_SEC } from './constants.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
@@ -150,6 +151,7 @@ function App() {
     workspaceFolders,
     isStandalone,
     todos,
+    agentOutputs,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -160,6 +162,7 @@ function App() {
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(true);
   const [showActiveLabels, setShowActiveLabels] = useState(true);
   const [showKanban, setShowKanban] = useState(false);
+  const [terminalAgentId, setTerminalAgentId] = useState<number | null>(null);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
   const handleToggleAlwaysShowOverlay = useCallback(
@@ -197,6 +200,8 @@ function App() {
     const meta = os.subagentMeta.get(agentId);
     const focusId = meta ? meta.parentAgentId : agentId;
     vscode.postMessage({ type: 'focusAgent', id: focusId });
+    // Toggle terminal panel for this agent
+    setTerminalAgentId((prev) => (prev === focusId ? null : focusId));
   }, []);
 
   const officeState = getOfficeState();
@@ -393,6 +398,17 @@ function App() {
       )}
 
       {showKanban && <KanbanOverlay todos={todos} onClose={() => setShowKanban(false)} />}
+
+      <TerminalPanel
+        agentId={terminalAgentId}
+        agentLabel={
+          terminalAgentId !== null
+            ? getOfficeState().characters.get(terminalAgentId)?.projectPath?.split('/').pop() || ''
+            : ''
+        }
+        messages={(terminalAgentId !== null ? agentOutputs[terminalAgentId] : []) || []}
+        onClose={() => setTerminalAgentId(null)}
+      />
 
       {showMigrationNotice && (
         <div

@@ -263,7 +263,25 @@ export function processTranscriptLine(
         id?: string;
         name?: string;
         input?: Record<string, unknown>;
+        text?: string;
       }>;
+
+      // Stream full content to terminal panel
+      const textBlocks = blocks.filter((b) => b.type === 'text' && b.text);
+      const toolBlocks = blocks.filter((b) => b.type === 'tool_use');
+      if (textBlocks.length > 0 || toolBlocks.length > 0) {
+        broadcast({
+          type: 'agentOutput',
+          id: agentId,
+          role: 'assistant',
+          text: textBlocks.map((b) => b.text).join('\n'),
+          tools: toolBlocks.map((b) => ({
+            name: b.name,
+            status: formatToolStatus(b.name || '', b.input || {}),
+          })),
+        });
+      }
+
       const hasToolUse = blocks.some((b) => b.type === 'tool_use');
 
       if (hasToolUse) {

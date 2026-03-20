@@ -64,6 +64,15 @@ export interface ExtensionMessageState {
   workspaceFolders: WorkspaceFolder[];
   isStandalone: boolean;
   todos: TodoItem[];
+  agentOutputs: Record<
+    number,
+    Array<{
+      role: string;
+      text?: string;
+      tools?: Array<{ name: string; status: string }>;
+      timestamp: number;
+    }>
+  >;
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -86,6 +95,17 @@ export function useExtensionMessages(
   const [agentStatuses, setAgentStatuses] = useState<Record<number, string>>({});
   const [subagentTools, setSubagentTools] = useState<
     Record<number, Record<string, ToolActivity[]>>
+  >({});
+  const [agentOutputs, setAgentOutputs] = useState<
+    Record<
+      number,
+      Array<{
+        role: string;
+        text?: string;
+        tools?: Array<{ name: string; status: string }>;
+        timestamp: number;
+      }>
+    >
   >({});
   const [subagentCharacters, setSubagentCharacters] = useState<SubagentCharacter[]>([]);
   const [layoutReady, setLayoutReady] = useState(false);
@@ -548,6 +568,20 @@ export function useExtensionMessages(
         os.updatePrStatus(msg.pr as PrStatus, msg.agentId as number);
       } else if (msg.type === 'agentBranchChange') {
         os.setAgentBranch(msg.agentId as number, msg.branch as string);
+      } else if (msg.type === 'agentOutput') {
+        const id = msg.id as number;
+        const output = {
+          role: msg.role as string,
+          text: msg.text as string | undefined,
+          tools: msg.tools as Array<{ name: string; status: string }> | undefined,
+          timestamp: Date.now(),
+        };
+        setAgentOutputs((prev) => {
+          const existing = prev[id] || [];
+          // Keep last 200 messages per agent to prevent memory bloat
+          const updated = [...existing, output].slice(-200);
+          return { ...prev, [id]: updated };
+        });
       } else if (msg.type === 'todoCompleted') {
         const agentId = msg.agentId as number;
         // Try handoff visit to another agent first, fall back to whiteboard
@@ -577,5 +611,6 @@ export function useExtensionMessages(
     workspaceFolders,
     isStandalone,
     todos,
+    agentOutputs,
   };
 }
