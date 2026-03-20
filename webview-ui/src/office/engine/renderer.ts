@@ -289,14 +289,15 @@ export function renderScene(
       else drinkSprite = BEER_BOTTLE_SPRITE;
 
       if (drinkSprite) {
-        const drinkZoom = Math.max(1, Math.round(zoom * 0.6));
+        const drinkZoom = Math.max(1, Math.round(zoom * 0.8));
         const drinkCached = getCachedSprite(drinkSprite, drinkZoom);
-        // Place drink on the desk surface — offset to the right of center
-        const drinkX = Math.round(offsetX + (ch.x + 6) * zoom - drinkCached.width / 2);
-        // Position at desk level (above the character, on the desk surface)
-        const drinkY = Math.round(offsetY + (ch.y - TILE_SIZE + 4) * zoom);
+        // Place drink to the right of the character on the desk
+        const drinkX = Math.round(offsetX + (ch.x + 8) * zoom - drinkCached.width / 2);
+        const drinkY = Math.round(
+          offsetY + (ch.y + sittingOffset) * zoom - drinkCached.height - zoom * 2,
+        );
         drawables.push({
-          zY: ch.y - TILE_SIZE + 0.1, // on the desk, behind the character
+          zY: charZY + 0.2, // render in front of character
           draw: (c) => {
             c.drawImage(drinkCached, drinkX, drinkY);
           },
