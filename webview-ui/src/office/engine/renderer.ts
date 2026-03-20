@@ -981,6 +981,7 @@ export function renderFrame(
     width: number;
     height: number;
     ciStatus?: string;
+    tasks?: Array<{ subject: string; status: string }>;
   }>,
 ): { offsetX: number; offsetY: number } {
   // Clear
@@ -1163,6 +1164,50 @@ export function renderFrame(
               ? '#ffcc44'
               : '#cdd6f4';
       ctx.fillText(label, labelX, labelY);
+
+      // Task cards on room whiteboard
+      if (room.tasks && room.tasks.length > 0) {
+        const cardFontSize = Math.max(4, Math.round(zoom * 2.5));
+        ctx.font = `${cardFontSize}px "Courier New", monospace`;
+        ctx.textAlign = 'left';
+        const cardX = Math.round(offsetX + (room.roomCol + 0.5) * TILE_SIZE * zoom);
+        const cardStartY = Math.round(offsetY + (room.roomRow + 1.5) * TILE_SIZE * zoom);
+        const cardH = cardFontSize + 4;
+        const maxCards = Math.min(room.tasks.length, 5);
+
+        for (let ti = 0; ti < maxCards; ti++) {
+          const task = room.tasks[ti];
+          const cy = cardStartY + ti * (cardH + 2);
+          const statusColor =
+            task.status === 'completed'
+              ? '#a6e3a1'
+              : task.status === 'in_progress'
+                ? '#f9e2af'
+                : '#6c7086';
+          // Card background
+          ctx.fillStyle = 'rgba(30, 30, 46, 0.8)';
+          const cardW = Math.round(room.width * TILE_SIZE * zoom * 0.6);
+          ctx.fillRect(cardX, cy, cardW, cardH);
+          // Status dot
+          ctx.fillStyle = statusColor;
+          ctx.beginPath();
+          ctx.arc(cardX + cardFontSize * 0.4, cy + cardH / 2, cardFontSize * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+          // Text
+          ctx.fillStyle = '#cdd6f4';
+          const truncated =
+            task.subject.length > 20 ? task.subject.slice(0, 20) + '..' : task.subject;
+          ctx.fillText(truncated, cardX + cardFontSize, cy + cardH - 3);
+        }
+        if (room.tasks.length > maxCards) {
+          ctx.fillStyle = '#6c7086';
+          ctx.fillText(
+            `+${room.tasks.length - maxCards} more`,
+            cardX + cardFontSize,
+            cardStartY + maxCards * (cardH + 2) + cardH - 3,
+          );
+        }
+      }
 
       // Fire effect on CI failure — render on the server rack area
       if (room.ciStatus === 'fail') {

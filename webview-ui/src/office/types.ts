@@ -188,6 +188,7 @@ export interface BranchRoom {
   height: number;
   pr?: PrStatus;
   agentIds: number[];
+  tasks: Array<{ subject: string; status: string }>;
 }
 
 export interface Character {

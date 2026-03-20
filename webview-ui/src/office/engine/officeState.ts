@@ -954,6 +954,7 @@ export class OfficeState {
       width: BRANCH_ROOM_WIDTH,
       height: BRANCH_ROOM_HEIGHT,
       agentIds: [],
+      tasks: [],
     };
 
     // Link any existing PR
@@ -1634,6 +1635,25 @@ export class OfficeState {
     return labels;
   }
 
+  /** Update branch room tasks from the todo list. Maps todos to rooms via agent branch. */
+  updateRoomTasks(todos: Array<{ subject: string; status: string; agentId: number }>): void {
+    // Clear all room tasks first
+    for (const room of this.branchRooms.values()) {
+      room.tasks = [];
+    }
+    // Map todos to rooms based on which agent is in which room
+    for (const todo of todos) {
+      const branch = this.agentBranches.get(todo.agentId);
+      if (branch) {
+        const room = this.branchRooms.get(branch);
+        if (room) {
+          room.tasks.push({ subject: todo.subject, status: todo.status });
+        }
+      }
+    }
+    // Also put unassigned todos in the main room (no branch room)
+  }
+
   getBranchRoomsForRenderer(): Array<{
     branch: string;
     roomCol: number;
@@ -1641,6 +1661,7 @@ export class OfficeState {
     width: number;
     height: number;
     ciStatus?: string;
+    tasks?: Array<{ subject: string; status: string }>;
   }> {
     const rooms: Array<{
       branch: string;
@@ -1649,6 +1670,7 @@ export class OfficeState {
       width: number;
       height: number;
       ciStatus?: string;
+      tasks?: Array<{ subject: string; status: string }>;
     }> = [];
     for (const room of this.branchRooms.values()) {
       rooms.push({
@@ -1658,6 +1680,7 @@ export class OfficeState {
         width: room.width,
         height: room.height,
         ciStatus: room.pr?.ciStatus,
+        tasks: room.tasks.length > 0 ? room.tasks : undefined,
       });
     }
     return rooms;
