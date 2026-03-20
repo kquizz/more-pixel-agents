@@ -60,7 +60,6 @@ import {
   BUBBLE_SWEAT_SPRITE,
   BUBBLE_WAITING_SPRITE,
   COFFEE_MUG_SPRITE,
-  FIRE_SPRITES,
   getCharacterSprites,
   LAPTOP_SPRITE,
   SODA_CAN_SPRITE,
@@ -974,15 +973,6 @@ export function renderFrame(
   todos?: Array<{ status: string }>,
   debugSeats?: Map<string, Seat>,
   clockPositions?: Array<{ col: number; row: number }>,
-  branchRooms?: Array<{
-    branch: string;
-    roomCol: number;
-    roomRow: number;
-    width: number;
-    height: number;
-    ciStatus?: string;
-    tasks?: Array<{ subject: string; status: string }>;
-  }>,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -1132,95 +1122,6 @@ export function renderFrame(
       ctx.beginPath();
       ctx.arc(cx, cy, Math.max(1, zoom * 0.3), 0, Math.PI * 2);
       ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // Branch room labels + CI fire effects
-  if (branchRooms && branchRooms.length > 0) {
-    ctx.save();
-    const fireFrame = Math.floor(Date.now() / 200) % 2;
-    const fireSprite = FIRE_SPRITES[fireFrame];
-    for (const room of branchRooms) {
-      // Branch name label at top of room
-      const labelX = Math.round(offsetX + (room.roomCol + room.width / 2) * TILE_SIZE * zoom);
-      const labelY = Math.round(offsetY + (room.roomRow + 0.3) * TILE_SIZE * zoom);
-      const fontSize = Math.max(6, Math.round(zoom * 4));
-      ctx.font = `bold ${fontSize}px "Courier New", monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      // Background
-      const label = room.branch.length > 15 ? room.branch.slice(0, 15) + '...' : room.branch;
-      const tw = ctx.measureText(label).width;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(labelX - tw / 2 - 4, labelY - 2, tw + 8, fontSize + 4);
-      // Text color based on CI status
-      ctx.fillStyle =
-        room.ciStatus === 'fail'
-          ? '#ff4444'
-          : room.ciStatus === 'pass'
-            ? '#44ff44'
-            : room.ciStatus === 'pending'
-              ? '#ffcc44'
-              : '#cdd6f4';
-      ctx.fillText(label, labelX, labelY);
-
-      // Task cards on room whiteboard
-      if (room.tasks && room.tasks.length > 0) {
-        const cardFontSize = Math.max(4, Math.round(zoom * 2.5));
-        ctx.font = `${cardFontSize}px "Courier New", monospace`;
-        ctx.textAlign = 'left';
-        const cardX = Math.round(offsetX + (room.roomCol + 0.5) * TILE_SIZE * zoom);
-        const cardStartY = Math.round(offsetY + (room.roomRow + 1.5) * TILE_SIZE * zoom);
-        const cardH = cardFontSize + 4;
-        const maxCards = Math.min(room.tasks.length, 5);
-
-        for (let ti = 0; ti < maxCards; ti++) {
-          const task = room.tasks[ti];
-          const cy = cardStartY + ti * (cardH + 2);
-          const statusColor =
-            task.status === 'completed'
-              ? '#a6e3a1'
-              : task.status === 'in_progress'
-                ? '#f9e2af'
-                : '#6c7086';
-          // Card background
-          ctx.fillStyle = 'rgba(30, 30, 46, 0.8)';
-          const cardW = Math.round(room.width * TILE_SIZE * zoom * 0.6);
-          ctx.fillRect(cardX, cy, cardW, cardH);
-          // Status dot
-          ctx.fillStyle = statusColor;
-          ctx.beginPath();
-          ctx.arc(cardX + cardFontSize * 0.4, cy + cardH / 2, cardFontSize * 0.25, 0, Math.PI * 2);
-          ctx.fill();
-          // Text
-          ctx.fillStyle = '#cdd6f4';
-          const truncated =
-            task.subject.length > 20 ? task.subject.slice(0, 20) + '..' : task.subject;
-          ctx.fillText(truncated, cardX + cardFontSize, cy + cardH - 3);
-        }
-        if (room.tasks.length > maxCards) {
-          ctx.fillStyle = '#6c7086';
-          ctx.fillText(
-            `+${room.tasks.length - maxCards} more`,
-            cardX + cardFontSize,
-            cardStartY + maxCards * (cardH + 2) + cardH - 3,
-          );
-        }
-      }
-
-      // Fire effect on CI failure — render on the server rack area
-      if (room.ciStatus === 'fail') {
-        const fireCached = getCachedSprite(fireSprite, zoom);
-        const fireX = Math.round(offsetX + (room.roomCol + room.width - 2) * TILE_SIZE * zoom);
-        const fireY = Math.round(
-          offsetY + (room.roomRow + 1) * TILE_SIZE * zoom - fireCached.height,
-        );
-        ctx.drawImage(fireCached, fireX, fireY);
-        // Second fire on the desk
-        const fireX2 = Math.round(offsetX + (room.roomCol + 2) * TILE_SIZE * zoom);
-        ctx.drawImage(fireCached, fireX2, fireY);
-      }
     }
     ctx.restore();
   }

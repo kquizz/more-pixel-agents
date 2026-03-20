@@ -175,22 +175,6 @@ export interface PrStatus {
   mergeable: boolean;
 }
 
-export interface BranchRoom {
-  branch: string;
-  /** Which column in the room grid (0 = main room) */
-  gridCol: number;
-  gridRow: number;
-  /** Tile offset in the layout */
-  roomCol: number;
-  roomRow: number;
-  /** Room size in tiles */
-  width: number;
-  height: number;
-  pr?: PrStatus;
-  agentIds: number[];
-  tasks: Array<{ subject: string; status: string }>;
-}
-
 export interface Character {
   id: number;
   state: CharacterState;
@@ -265,6 +249,8 @@ export interface Character {
   terminalApp?: string;
   /** Project directory path — standalone mode only */
   projectPath?: string;
+  /** Current git branch name */
+  branchName?: string;
   /** Greeting pause timer after spawn — character faces partner and waits */
   greetingTimer?: number;
   /** Active whiteboard visit animation state */

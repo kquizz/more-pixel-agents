@@ -6,10 +6,6 @@ import {
   AMENITY_VISIT_CHANCE,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
-  BRANCH_ROOM_HEIGHT,
-  BRANCH_ROOM_MAX_COLS,
-  BRANCH_ROOM_SKIP,
-  BRANCH_ROOM_WIDTH,
   CELEBRATION_CHANCE,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
@@ -51,7 +47,6 @@ import {
 } from '../layout/layoutSerializer.js';
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import type {
-  BranchRoom,
   Character,
   FurnitureInstance,
   OfficeLayout,
@@ -60,13 +55,7 @@ import type {
   Seat,
   TileType as TileTypeVal,
 } from '../types.js';
-import {
-  CharacterState,
-  Direction,
-  MATRIX_EFFECT_DURATION,
-  TILE_SIZE,
-  TileType,
-} from '../types.js';
+import { CharacterState, Direction, MATRIX_EFFECT_DURATION, TILE_SIZE } from '../types.js';
 import { createCharacter, updateCharacter } from './characters.js';
 import { matrixEffectSeeds } from './matrixEffect.js';
 
@@ -125,8 +114,6 @@ export class OfficeState {
   subagentMeta: Map<number, { parentAgentId: number; parentToolId: string }> = new Map();
   private nextSubagentId = -1;
 
-  /** Dynamic branch rooms generated when agents switch branches */
-  branchRooms: Map<string, BranchRoom> = new Map();
   /** Current PR statuses from GitHub poller */
   prStatuses: PrStatus[] = [];
   /** Agent ID → current branch name */
@@ -832,45 +819,20 @@ export class OfficeState {
     }
   }
 
-  // ── Branch Room Management ──────────────────────────────────
-
-  /** Update stored PR list and link PRs to existing branch rooms */
-  /** Width of the main (user-designed) room before any branch rooms were added */
-  private mainRoomCols = 0;
+  // ── PR & Branch Tracking ──────────────────────────────────
 
   updatePrList(prs: PrStatus[]): void {
-    console.log(
-      `[BranchRoom] updatePrList: ${prs.length} PRs (${prs.filter((p) => p.state === 'OPEN').length} open), ${this.branchRooms.size} existing rooms`,
-    );
     this.prStatuses = prs;
-
-    // Remember the main room width before expansion
-    if (this.mainRoomCols === 0) {
-      this.mainRoomCols = this.layout.cols;
-    }
-
-    // Collect new branches, then batch-generate
-    const newBranches: string[] = [];
+    // Update characters based on PR status — CI fail = sweat, approved = idea, etc.
     for (const pr of prs) {
-      if (pr.state === 'OPEN' && !BRANCH_ROOM_SKIP.includes(pr.branch)) {
-        if (!this.branchRooms.has(pr.branch)) {
-          newBranches.push(pr.branch);
+      if (pr.state !== 'OPEN') continue;
+      // Find agents on this branch
+      for (const [agentId, branch] of this.agentBranches) {
+        if (branch === pr.branch) {
+          if (pr.ciStatus === 'fail') {
+            this.showReactionBubble(agentId, 'sweat');
+          }
         }
-      }
-    }
-    if (newBranches.length > 0) {
-      for (const branch of newBranches) {
-        this.generateBranchRoom(branch);
-      }
-      // Rebuild once after all rooms
-      this.rebuildFromLayout(this.layout);
-    }
-
-    // Link all PRs to their branch rooms
-    for (const pr of prs) {
-      const room = this.branchRooms.get(pr.branch);
-      if (room) {
-        room.pr = pr;
       }
     }
   }
@@ -885,18 +847,14 @@ export class OfficeState {
       this.prStatuses.push(pr);
     }
 
-    // Link to branch room
-    const room = this.branchRooms.get(pr.branch);
-    if (room) {
-      room.pr = pr;
-    }
-
     // Trigger visual effects based on status
     if (pr.ciStatus === 'fail') {
       this.triggerScreenShake();
-      const roomAgents = room?.agentIds ?? [];
-      for (const aid of roomAgents) {
-        this.showReactionBubble(aid, 'sweat');
+      // Show sweat on all agents on this branch
+      for (const [aid, branch] of this.agentBranches) {
+        if (branch === pr.branch) {
+          this.showReactionBubble(aid, 'sweat');
+        }
       }
     } else if (pr.state === 'MERGED') {
       // Celebration on all agents
@@ -910,250 +868,14 @@ export class OfficeState {
     }
   }
 
-  /** Set agent's active branch — creates a room if needed, moves agent there */
+  /** Set agent's active branch and update the character's label */
   setAgentBranch(agentId: number, branch: string): void {
-    const prev = this.agentBranches.get(agentId);
-    if (prev === branch) return;
     this.agentBranches.set(agentId, branch);
-
-    // Remove agent from previous room's agentIds
-    if (prev) {
-      const prevRoom = this.branchRooms.get(prev);
-      if (prevRoom) {
-        prevRoom.agentIds = prevRoom.agentIds.filter((id) => id !== agentId);
-      }
-    }
-
-    // Skip room generation for main/master branches — agents stay in main room
-    if (BRANCH_ROOM_SKIP.includes(branch)) {
-      return;
-    }
-
-    // Create room if it doesn't exist
-    if (!this.branchRooms.has(branch)) {
-      if (this.mainRoomCols === 0) this.mainRoomCols = this.layout.cols;
-      this.generateBranchRoom(branch);
-      this.rebuildFromLayout(this.layout);
-    }
-
-    // Move agent to branch room
-    this.moveAgentToRoom(agentId, branch);
-  }
-
-  /** Generate a new branch room to the right of the main layout */
-  private generateBranchRoom(branch: string): void {
-    console.log(`[BranchRoom] Generating room for branch: ${branch}`);
-    const existingRooms = Array.from(this.branchRooms.values());
-
-    // Find next grid position (fill columns then rows)
-    const idx = existingRooms.length;
-    const gridCol = (idx % BRANCH_ROOM_MAX_COLS) + 1; // +1 because col 0 is main room
-    const gridRow = Math.floor(idx / BRANCH_ROOM_MAX_COLS);
-
-    // Calculate tile offset using the ORIGINAL main room width (before any expansion)
-    const mainCols = this.mainRoomCols || this.layout.cols;
-    const roomCol = mainCols + (gridCol - 1) * BRANCH_ROOM_WIDTH;
-    const roomRow = gridRow * BRANCH_ROOM_HEIGHT;
-
-    // Expand the layout grid to fit
-    const newCols = Math.max(this.layout.cols, roomCol + BRANCH_ROOM_WIDTH);
-    const newRows = Math.max(this.layout.rows, roomRow + BRANCH_ROOM_HEIGHT);
-    this.expandLayoutTo(newCols, newRows);
-
-    // Fill room tiles (floor + walls)
-    this.fillRoomTiles(roomCol, roomRow, BRANCH_ROOM_WIDTH, BRANCH_ROOM_HEIGHT);
-
-    // Place furniture
-    this.placeBranchRoomFurniture(branch, roomCol, roomRow);
-
-    // Store room
-    const room: BranchRoom = {
-      branch,
-      gridCol,
-      gridRow,
-      roomCol,
-      roomRow,
-      width: BRANCH_ROOM_WIDTH,
-      height: BRANCH_ROOM_HEIGHT,
-      agentIds: [],
-      tasks: [],
-    };
-
-    // Link any existing PR
-    const pr = this.prStatuses.find((p) => p.branch === branch);
-    if (pr) {
-      room.pr = pr;
-    }
-
-    this.branchRooms.set(branch, room);
-    // Note: caller is responsible for rebuildFromLayout after batch generation
-  }
-
-  /** Expand the layout grid to at least newCols x newRows, preserving existing tiles */
-  private expandLayoutTo(newCols: number, newRows: number): void {
-    const oldCols = this.layout.cols;
-    const oldRows = this.layout.rows;
-
-    if (newCols <= oldCols && newRows <= oldRows) return;
-
-    const finalCols = Math.max(oldCols, newCols);
-    const finalRows = Math.max(oldRows, newRows);
-
-    // Build new tiles array — default to VOID
-    const newTiles: TileTypeVal[] = new Array(finalCols * finalRows).fill(
-      TileType.VOID,
-    ) as TileTypeVal[];
-    const newTileColors: Array<import('../types.js').FloorColor | null> = new Array(
-      finalCols * finalRows,
-    ).fill(null);
-
-    // Copy existing tiles
-    for (let r = 0; r < oldRows; r++) {
-      for (let c = 0; c < oldCols; c++) {
-        newTiles[r * finalCols + c] = this.layout.tiles[r * oldCols + c];
-        if (this.layout.tileColors) {
-          newTileColors[r * finalCols + c] = this.layout.tileColors[r * oldCols + c];
-        }
-      }
-    }
-
-    this.layout = {
-      ...this.layout,
-      cols: finalCols,
-      rows: finalRows,
-      tiles: newTiles,
-      tileColors: newTileColors,
-    };
-  }
-
-  /** Fill a rectangular room area with walls around the perimeter and floor inside */
-  private fillRoomTiles(col: number, row: number, w: number, h: number): void {
-    const cols = this.layout.cols;
-    const floorColor: import('../types.js').FloorColor = { h: 200, s: 20, b: 10, c: 0 };
-
-    for (let r = row; r < row + h; r++) {
-      for (let c = col; c < col + w; c++) {
-        const idx = r * cols + c;
-        if (r === row || r === row + h - 1 || c === col || c === col + w - 1) {
-          // Perimeter = wall
-          this.layout.tiles[idx] = TileType.WALL as TileTypeVal;
-          if (this.layout.tileColors) {
-            this.layout.tileColors[idx] = null;
-          }
-        } else {
-          // Interior = floor
-          this.layout.tiles[idx] = TileType.FLOOR_1 as TileTypeVal;
-          if (this.layout.tileColors) {
-            this.layout.tileColors[idx] = floorColor;
-          }
-        }
-      }
-    }
-  }
-
-  /** Place standard furniture in a generated branch room */
-  private placeBranchRoomFurniture(branch: string, col: number, row: number): void {
-    const uid = () => `br-${branch}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-    // Whiteboard at top of room (on the wall)
-    this.layout.furniture.push({
-      uid: uid(),
-      type: 'WHITEBOARD',
-      col: col + 2,
-      row: row,
-    });
-
-    // Server rack on the right side
-    this.layout.furniture.push({
-      uid: uid(),
-      type: 'SERVER_RACK',
-      col: col + BRANCH_ROOM_WIDTH - 2,
-      row: row + 1,
-    });
-
-    // Desk with branch label
-    this.layout.furniture.push({
-      uid: uid(),
-      type: 'DESK_FRONT',
-      col: col + 1,
-      row: row + 3,
-      projectLabel: branch,
-    });
-
-    // Triple monitor on the desk
-    this.layout.furniture.push({
-      uid: uid(),
-      type: 'TRIPLE_MONITOR_OFF',
-      col: col + 1,
-      row: row + 3,
-    });
-
-    // Chair behind the desk
-    this.layout.furniture.push({
-      uid: uid(),
-      type: 'CUSHIONED_CHAIR_BACK',
-      col: col + 2,
-      row: row + 5,
-    });
-  }
-
-  /** Move an agent to a branch room — reassign seat and pathfind */
-  moveAgentToRoom(agentId: number, branch: string): void {
+    // Update the character's branch label
     const ch = this.characters.get(agentId);
-    if (!ch) return;
-
-    const room = this.branchRooms.get(branch);
-    if (!room) return;
-
-    // Find a seat in the room (by projectLabel matching branch)
-    const seatId = this.findBranchRoomSeat(branch);
-    if (seatId && seatId !== ch.seatId) {
-      // Release old seat
-      if (ch.seatId) {
-        const old = this.seats.get(ch.seatId);
-        if (old) old.assigned = false;
-      }
-      // Claim new seat and pathfind
-      const seat = this.seats.get(seatId)!;
-      seat.assigned = true;
-      ch.seatId = seatId;
-      const path = this.withOwnSeatUnblocked(ch, () =>
-        findPath(
-          ch.tileCol,
-          ch.tileRow,
-          seat.seatCol,
-          seat.seatRow,
-          this.tileMap,
-          this.blockedTiles,
-        ),
-      );
-      if (path.length > 0) {
-        ch.path = path;
-        ch.moveProgress = 0;
-        ch.state = CharacterState.WALK;
-        ch.frame = 0;
-        ch.frameTimer = 0;
-      } else {
-        // No path found — snap to seat
-        ch.tileCol = seat.seatCol;
-        ch.tileRow = seat.seatRow;
-        ch.x = seat.seatCol * TILE_SIZE + TILE_SIZE / 2;
-        ch.y = seat.seatRow * TILE_SIZE + TILE_SIZE / 2;
-      }
-      ch.dir = seat.facingDir;
+    if (ch) {
+      ch.branchName = branch;
     }
-
-    // Track agent in room
-    room.agentIds = room.agentIds.filter((id) => id !== agentId);
-    room.agentIds.push(agentId);
-  }
-
-  /** Find an available seat in a branch room by matching projectLabel to the branch name */
-  private findBranchRoomSeat(branch: string): string | null {
-    const available = Array.from(this.seats.entries())
-      .filter(([, s]) => !s.assigned && s.projectLabel === branch)
-      .sort((a, b) => (a[1].pcDistance ?? Infinity) - (b[1].pcDistance ?? Infinity));
-    return available.length > 0 ? available[0][0] : null;
   }
 
   /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON) */
@@ -1653,57 +1375,6 @@ export class OfficeState {
       labels.push({ col: deskCol, row: deskRow, label });
     }
     return labels;
-  }
-
-  /** Update branch room tasks from the todo list. Maps todos to rooms via agent branch. */
-  updateRoomTasks(todos: Array<{ subject: string; status: string; agentId: number }>): void {
-    // Clear all room tasks first
-    for (const room of this.branchRooms.values()) {
-      room.tasks = [];
-    }
-    // Map todos to rooms based on which agent is in which room
-    for (const todo of todos) {
-      const branch = this.agentBranches.get(todo.agentId);
-      if (branch) {
-        const room = this.branchRooms.get(branch);
-        if (room) {
-          room.tasks.push({ subject: todo.subject, status: todo.status });
-        }
-      }
-    }
-    // Also put unassigned todos in the main room (no branch room)
-  }
-
-  getBranchRoomsForRenderer(): Array<{
-    branch: string;
-    roomCol: number;
-    roomRow: number;
-    width: number;
-    height: number;
-    ciStatus?: string;
-    tasks?: Array<{ subject: string; status: string }>;
-  }> {
-    const rooms: Array<{
-      branch: string;
-      roomCol: number;
-      roomRow: number;
-      width: number;
-      height: number;
-      ciStatus?: string;
-      tasks?: Array<{ subject: string; status: string }>;
-    }> = [];
-    for (const room of this.branchRooms.values()) {
-      rooms.push({
-        branch: room.branch,
-        roomCol: room.roomCol,
-        roomRow: room.roomRow,
-        width: room.width,
-        height: room.height,
-        ciStatus: room.pr?.ciStatus,
-        tasks: room.tasks.length > 0 ? room.tasks : undefined,
-      });
-    }
-    return rooms;
   }
 
   getClockPositions(): Array<{ col: number; row: number }> {

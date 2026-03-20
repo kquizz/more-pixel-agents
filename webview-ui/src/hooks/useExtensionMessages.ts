@@ -542,8 +542,6 @@ export function useExtensionMessages(
           }
         }
         setTodos(flat);
-        // Update branch room whiteboards with tasks
-        os.updateRoomTasks(flat);
       } else if (msg.type === 'todoCreated') {
         const agentId = msg.agentId as number;
         const taskId = msg.taskId as string;
