@@ -756,9 +756,13 @@ function sendInitialState(ws: WebSocket, assets: ReturnType<typeof loadAllAssets
 
 function pollGitHubPRsForAllAgents(): void {
   const polledPaths = new Set<string>();
+  console.log(`[GitHub] Polling ${agents.size} agents...`);
 
   for (const [agentId, agent] of agents) {
-    if (!agent.projectPath) continue;
+    if (!agent.projectPath) {
+      console.log(`[GitHub] Agent ${agentId}: no projectPath, skipping`);
+      continue;
+    }
 
     // Poll PRs once per unique project path
     if (!polledPaths.has(agent.projectPath)) {
@@ -804,9 +808,10 @@ function pollGitHubPRsForAllAgents(): void {
       }
     }
   }
-  if (allPrs.length > 0) {
-    broadcast({ type: 'prList', prs: allPrs });
-  }
+  console.log(
+    `[GitHub] Broadcasting ${allPrs.length} PRs (${allPrs.filter((p) => p.state === 'OPEN').length} open)`,
+  );
+  broadcast({ type: 'prList', prs: allPrs });
 }
 
 // -- Static file server --

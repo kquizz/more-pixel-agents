@@ -17,7 +17,7 @@ export function pollGitHubPRs(cwd: string): PrStatus[] {
       { cwd, encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'ignore'] },
     );
     const prs = JSON.parse(output) as Array<Record<string, unknown>>;
-    return prs.map((pr) => ({
+    const result = prs.map((pr) => ({
       number: pr.number as number,
       title: pr.title as string,
       branch: pr.headRefName as string,
@@ -26,7 +26,14 @@ export function pollGitHubPRs(cwd: string): PrStatus[] {
       reviewStatus: mapReviewStatus(pr.reviewDecision as string | null),
       mergeable: pr.mergeable !== 'CONFLICTING',
     }));
-  } catch {
+    console.log(
+      `[GitHub] Polled ${cwd}: ${result.length} PRs (${result.filter((p) => p.state === 'OPEN').length} open)`,
+    );
+    return result;
+  } catch (err) {
+    console.log(
+      `[GitHub] Poll failed for ${cwd}: ${err instanceof Error ? err.message : 'unknown'}`,
+    );
     return [];
   }
 }
