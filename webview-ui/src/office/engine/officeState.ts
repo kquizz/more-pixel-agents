@@ -836,6 +836,9 @@ export class OfficeState {
 
   /** Update stored PR list and link PRs to existing branch rooms */
   updatePrList(prs: PrStatus[]): void {
+    console.log(
+      `[BranchRoom] updatePrList: ${prs.length} PRs (${prs.filter((p) => p.state === 'OPEN').length} open), ${this.branchRooms.size} existing rooms`,
+    );
     this.prStatuses = prs;
     // Auto-create rooms for OPEN PRs that don't have rooms yet
     for (const pr of prs) {
@@ -919,6 +922,7 @@ export class OfficeState {
 
   /** Generate a new branch room to the right of the main layout */
   private generateBranchRoom(branch: string): void {
+    console.log(`[BranchRoom] Generating room for branch: ${branch}`);
     const existingRooms = Array.from(this.branchRooms.values());
 
     // Find next grid position (fill columns then rows)

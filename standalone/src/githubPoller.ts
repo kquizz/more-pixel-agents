@@ -13,7 +13,7 @@ export interface PrStatus {
 export function pollGitHubPRs(cwd: string): PrStatus[] {
   try {
     const output = execSync(
-      'gh pr list --state all --limit 20 --json number,title,headRefName,state,statusCheckRollup,reviewDecision,mergeable',
+      'gh pr list --state open --limit 20 --json number,title,headRefName,state,statusCheckRollup,reviewDecision,mergeable',
       { cwd, encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'ignore'] },
     );
     const prs = JSON.parse(output) as Array<Record<string, unknown>>;
